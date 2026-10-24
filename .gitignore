@@ -6,3 +6,6 @@ dist/
 
 .tmp/
 .shots/downloads/
+
+release/
+

@@ -1,7 +1,8 @@
 # Piano Studio
 
 A browser piano studio: play an 88-key piano with synthesized sound, read along with real
-sheet music, import/export MIDI and MusicXML, and practice with two games.
+sheet music, import/export MIDI and MusicXML, and practice with two games. It also ships as a
+native **Android app** (Capacitor) — see [Android app](#android-app) below.
 
 ![Piano Studio playing Twinkle Twinkle](docs/studio-playing.png)
 
@@ -61,6 +62,41 @@ The app needs a modern browser with Web Audio (Chrome, Edge, Firefox, Safari). A
 the first click/keypress because of browser autoplay rules. Web MIDI is optional and depends on
 browser support.
 
+## Android app
+
+The app is wrapped with [Capacitor](https://capacitorjs.com) and runs as a native Android app with
+a dark splash screen, status-bar theming, hardware back navigation, screen wake-lock while
+playing, and Android share-sheet exports. A ready-to-install debug APK is included at
+`release/PianoStudio-1.0-debug.apk`.
+
+Install it on a phone with USB debugging, or copy it to the device and open it (allow “install
+unknown apps” for your file manager):
+
+```bash
+adb install -r release/PianoStudio-1.0-debug.apk
+```
+
+Build it yourself (JDK 21 + Android SDK with platform 36 required):
+
+```bash
+npm run android:build     # web build → cap sync → Gradle assembleDebug
+# output: android/app/build/outputs/apk/debug/app-debug.apk
+npm run android:open      # open the project in Android Studio
+```
+
+Android-specific behaviour:
+
+- **Back button**: closes a game → returns to the games page → returns to Studio → exits the app.
+- **Exports** (MusicXML/MIDI/JSON/SVG): opened through the Android share sheet so you can save to
+  Files, Drive, send by email, etc. Import uses the system file picker.
+- **Audio** starts on the first tap (WebView autoplay rules) and pauses when the app is backgrounded.
+- **Rotation**: portrait is a sheet + keyboard layout; landscape is a compact sheet + full-width
+  88-key keyboard practice view.
+
+| Portrait | Landscape |
+| --- | --- |
+| ![Android portrait](docs/android-portrait.png) | ![Android landscape](docs/android-landscape.png) |
+
 ## Controls
 
 | Action | Input |
@@ -117,6 +153,11 @@ Playback is a look-ahead scheduler: notes are scheduled into the AudioContext ~0
 - The app was exercised end-to-end in headless Chrome: playback highlights keys and advances the
   clock, the falling-notes game scores key presses, the quiz advances, and every export format
   downloads and re-imports.
+- The Android build was installed on an Android 14 emulator: audio output was confirmed through the
+  Android audio stack (48 kHz stereo AAudio stream), playback highlighted 4 keys and advanced the
+  transport, the falling-notes canvas rendered, MusicXML import via the system picker added the
+  score (78 notes), the share sheet opened with the exported `.musicxml`, hardware Back navigated
+  game → games page → Studio → exit, and both portrait and landscape layouts were checked.
 
 ## Credits
 

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { MAX_PIANO_MIDI, MIN_PIANO_MIDI, isBlackKey, midiToName } from '../music/pitch';
-import { qwertyLabelForMidi } from '../music/keymap';
+import { qwertyLabelForMidi, octaveBaseMidi } from '../music/keymap';
 
 export interface KeyboardProps {
   activeMidis: number[];
@@ -58,6 +58,46 @@ export function Keyboard({
   const activeSet = useMemo(() => new Set(activeMidis), [activeMidis]);
   const pressedSet = useMemo(() => new Set(pressedMidis ?? []), [pressedMidis]);
   const pointers = useRef(new Map<number, number>());
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  // Keep the chosen QWERTY octave in view — essential on phones, where only a
+  // couple of octaves fit on screen at once.
+  const centerKeyboard = useCallback(
+    (smooth: boolean) => {
+      const scroll = scrollRef.current;
+      const piano = scroll?.querySelector<HTMLElement>('.piano');
+      if (!scroll || !piano) return;
+      const targetMidi = Math.max(MIN_PIANO_MIDI, Math.min(MAX_PIANO_MIDI, octaveBaseMidi(qwertyOctave)));
+      let whiteIndex = 0;
+      for (let midi = MIN_PIANO_MIDI; midi < targetMidi; midi += 1) {
+        if (!isBlackKey(midi)) whiteIndex += 1;
+      }
+      const keyWidth = piano.clientWidth / WHITE_KEY_COUNT;
+      const maxScroll = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
+      const left = Math.min(maxScroll, Math.max(0, whiteIndex * keyWidth - scroll.clientWidth / 2 + keyWidth));
+      scroll.scrollTo({ left, behavior: smooth ? 'smooth' : 'auto' });
+    },
+    [qwertyOctave],
+  );
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => centerKeyboard(true));
+    // Rotation or window resizing changes how much of the keyboard is visible,
+    // so re-centre after the new layout settles.
+    let resizeTimer = 0;
+    const onResize = () => {
+      window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => centerKeyboard(false), 120);
+    };
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(resizeTimer);
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+    };
+  }, [centerKeyboard]);
 
   useEffect(
     () => () => {
@@ -94,7 +134,7 @@ export function Keyboard({
   };
 
   return (
-    <div className="piano-scroll">
+    <div className="piano-scroll" ref={scrollRef}>
       <div className="piano" role="group" aria-label="88-key piano keyboard">
       <div className="piano-white-row">
         {whites.map(({ midi }) => {

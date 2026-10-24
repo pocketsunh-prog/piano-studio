@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePianoEngine } from './hooks/usePianoEngine';
 import { usePlayback } from './hooks/usePlayback';
 import { useQwertyInput } from './hooks/useQwertyInput';
@@ -9,9 +9,6 @@ import { PianoRoll } from './components/PianoRoll';
 import { Transport } from './components/Transport';
 import { SongLibrary, type SongEntry, type SongKind } from './components/SongLibrary';
 import { GamesPage, type GameKind } from './components/GamesPage';
-import { SheetView } from './sheet/SheetView';
-import { GameView } from './game/GameView';
-import { QuizView } from './game/QuizView';
 import { DEMO_SONGS } from './music/demo';
 import {
   beatToSeconds,
@@ -25,10 +22,30 @@ import { MAX_OCTAVE, MIN_OCTAVE } from './music/keymap';
 import { parseScoreFile } from './music/formats/import';
 import { buildExport, scoreFromJson, type ExportFormat } from './music/formats/export';
 import type { Score } from './music/types';
+import { saveBlob } from './platform/saveBlob';
+import {
+  isNativeApp,
+  setupNativeShell,
+  useAndroidBackButton,
+  useNativePause,
+  useWakeLock,
+} from './platform/native';
 
 type Tab = 'studio' | 'games';
 type ViewMode = 'sheet' | 'roll';
 type ToastKind = 'info' | 'success' | 'error';
+
+// VexFlow (notation) and the game views are large; load them on demand so the
+// piano shell appears quickly, especially in the Android WebView.
+const SheetView = lazy(() =>
+  import('./sheet/SheetView').then((module) => ({ default: module.SheetView })),
+);
+const GameView = lazy(() =>
+  import('./game/GameView').then((module) => ({ default: module.GameView })),
+);
+const QuizView = lazy(() =>
+  import('./game/QuizView').then((module) => ({ default: module.QuizView })),
+);
 
 interface ToastState {
   message: string;
@@ -94,17 +111,6 @@ function slugify(value: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
   return slug || 'piano-sheet';
-}
-
-function downloadBlob(blob: Blob, fileName: string): void {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = fileName;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
 function formatClock(seconds: number): string {
@@ -305,6 +311,9 @@ export default function App() {
   const handleExport = useCallback(
     async (format: ExportFormat | 'svg') => {
       try {
+        let blob: Blob;
+        let fileName: string;
+        let label: string;
         if (format === 'svg') {
           const sheetModule = (await import('./sheet/SheetView')) as unknown as {
             renderScoreSvg?: (value: Score) => string;
@@ -313,14 +322,26 @@ export default function App() {
             throw new Error('SVG notation export is not available yet.');
           }
           const svg = sheetModule.renderScoreSvg(score);
-          downloadBlob(new Blob([svg], { type: 'image/svg+xml' }), `${slugify(score.title)}.svg`);
+          blob = new Blob([svg], { type: 'image/svg+xml' });
+          fileName = `${slugify(score.title)}.svg`;
+          label = 'SVG sheet';
         } else {
-          const { fileName, mime, data } = buildExport(score, format);
+          const exported = buildExport(score, format);
           const payload =
-            typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
-          downloadBlob(new Blob([payload], { type: mime }), fileName);
+            typeof exported.data === 'string'
+              ? new TextEncoder().encode(exported.data)
+              : new Uint8Array(exported.data);
+          blob = new Blob([payload], { type: exported.mime });
+          fileName = exported.fileName;
+          label = format.toUpperCase();
         }
-        showToast(`Exported ${format === 'svg' ? 'SVG sheet' : format.toUpperCase()}.`, 'success');
+        const saved = await saveBlob(blob, fileName);
+        showToast(
+          saved.mode === 'shared'
+            ? `${saved.fileName} is ready — choose an app to save or share it.`
+            : `Exported ${label}.`,
+          'success',
+        );
       } catch (error) {
         showToast(
           `Export failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -375,6 +396,38 @@ export default function App() {
     engine.stopAll();
     setActiveGame(null);
   }, [engine]);
+
+  // ---- native shell (Android): splash/status bar, back button, wake lock ----
+  useEffect(() => {
+    void setupNativeShell();
+  }, []);
+
+  useNativePause(() => {
+    playback.pause();
+    if (recorder.recording) recorder.stop();
+  });
+
+  useWakeLock(playback.isPlaying || activeGame !== null || recorder.recording);
+
+  useAndroidBackButton(() => {
+    if (recorder.recording) {
+      recorder.stop();
+      return true;
+    }
+    if (activeGame) {
+      exitGame();
+      return true;
+    }
+    if (tab === 'games') {
+      setTab('studio');
+      return true;
+    }
+    if (playback.isPlaying) {
+      playback.pause();
+      return true;
+    }
+    return false;
+  });
 
   const handleImportClick = useCallback(() => {
     fileInputRef.current?.click();
@@ -542,14 +595,16 @@ export default function App() {
 
               <div className="stage-view">
                 {viewMode === 'sheet' ? (
-                  <SheetView
-                    score={score}
-                    currentBeat={playback.currentBeat}
-                    activeMidis={activeMidis}
-                    follow={playback.isPlaying}
-                    onSeek={playback.seek}
-                    className="sheet-view"
-                  />
+                  <Suspense fallback={<div className="view-loading">Preparing sheet music…</div>}>
+                    <SheetView
+                      score={score}
+                      currentBeat={playback.currentBeat}
+                      activeMidis={activeMidis}
+                      follow={playback.isPlaying}
+                      onSeek={playback.seek}
+                      className="sheet-view"
+                    />
+                  </Suspense>
                 ) : (
                   <PianoRoll
                     score={score}
@@ -653,17 +708,21 @@ export default function App() {
 
         {tab === 'games' && !activeGame && <GamesPage score={score} onStart={startGame} />}
         {tab === 'games' && activeGame === 'falling' && (
-          <GameView score={score} engine={engine} onExit={exitGame} />
+          <Suspense fallback={<div className="view-loading game-loading">Preparing game…</div>}>
+            <GameView score={score} engine={engine} onExit={exitGame} />
+          </Suspense>
         )}
         {tab === 'games' && activeGame === 'quiz' && (
-          <QuizView engine={engine} onExit={exitGame} />
+          <Suspense fallback={<div className="view-loading game-loading">Preparing game…</div>}>
+            <QuizView engine={engine} onExit={exitGame} />
+          </Suspense>
         )}
       </main>
 
       <input
         ref={fileInputRef}
         type="file"
-        accept=".mid,.midi,.musicxml,.xml,.mxl,.json"
+        accept={isNativeApp() ? '*/*' : '.mid,.midi,.musicxml,.xml,.mxl,.json'}
         className="visually-hidden"
         aria-label="Import a piano sheet"
         onChange={(event) => {

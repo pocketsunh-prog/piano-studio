@@ -116,6 +116,7 @@ input[type='range'] {
 
 .app {
   height: 100vh;
+  height: 100dvh;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -591,6 +592,21 @@ input[type='range'] {
 
 .sheet-view {
   height: 100%;
+}
+
+.view-loading {
+  height: 100%;
+  min-height: 120px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 13px;
+  letter-spacing: 0.3px;
+}
+
+.view-loading.game-loading {
+  height: 100vh;
+  color: var(--text);
 }
 
 /* The stage header already shows title/composer; hide the notation header inside it. */
@@ -1239,6 +1255,7 @@ input[type='range'] {
   .app {
     height: auto;
     min-height: 100vh;
+    min-height: 100dvh;
     overflow: visible;
   }
   .app-main {
@@ -1256,24 +1273,72 @@ input[type='range'] {
     max-height: 320px;
   }
   .stage-view {
-    min-height: 300px;
-    height: 46vh;
+    min-height: 210px;
+    height: 33vh;
     flex: 0 0 auto;
+  }
+  .stage {
+    gap: 8px;
   }
   .score-heading h2 {
     max-width: 100%;
+    font-size: 17px;
+  }
+  .score-tags {
+    gap: 2px 10px;
+    font-size: 10.5px;
+  }
+  .transport {
+    padding: 8px 10px;
+    gap: 6px;
+  }
+  .transport-main {
+    gap: 8px;
+  }
+  .play-button {
+    width: 40px;
+    height: 34px;
+  }
+  .stop-button {
+    width: 34px;
+    height: 34px;
+  }
+  .keyboard-dock {
+    padding: 8px 10px 10px;
+  }
+  .piano {
+    height: 102px;
+  }
+  .now-notes {
+    font-size: 14px;
   }
   .app-header {
     position: sticky;
     top: 0;
-    gap: 10px;
-    padding: 10px 12px;
+    gap: 8px;
+    padding: 8px 12px;
   }
   .brand {
     min-width: 0;
   }
+  .brand-mark {
+    width: 32px;
+    height: 32px;
+    font-size: 18px;
+  }
+  .brand-text h1 {
+    font-size: 15px;
+    white-space: nowrap;
+  }
+  .brand-text p {
+    display: none;
+  }
   .header-right {
-    gap: 8px;
+    gap: 6px;
+  }
+  .audio-pill {
+    padding: 6px 9px;
+    font-size: 11px;
   }
   .tab {
     padding: 6px 12px;
@@ -1283,9 +1348,137 @@ input[type='range'] {
   }
 }
 
+@media (max-width: 520px) {
+  .brand-text {
+    display: none;
+  }
+  .brand {
+    min-width: auto;
+  }
+  .brand-mark {
+    width: 32px;
+    height: 32px;
+  }
+  .app-header {
+    gap: 6px;
+  }
+  .audio-pill {
+    padding: 6px 8px;
+    font-size: 10.5px;
+  }
+  .tabs {
+    padding: 2px;
+  }
+  .tab {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+  .score-heading h2 {
+    font-size: 16px;
+  }
+}
+
+/* Very short viewports (phones in landscape): compact, keyboard-first layout. */
+@media (max-height: 520px) and (max-width: 1000px) {
+  .app {
+    height: 100dvh;
+    overflow: hidden;
+  }
+  .app-main {
+    overflow: hidden;
+    padding: 6px 8px;
+    min-height: 0;
+    display: flex;
+  }
+  .app-header {
+    padding: 4px 10px;
+    flex: 0 0 auto;
+  }
+  .brand-mark {
+    width: 28px;
+    height: 28px;
+    font-size: 16px;
+  }
+  .brand-text h1 {
+    font-size: 13px;
+  }
+  .studio {
+    display: flex;
+    flex: 1 1 auto;
+    height: 100%;
+    min-height: 0;
+    gap: 6px;
+  }
+  .stage {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: 100%;
+    gap: 6px;
+  }
+  .stage-head,
+  .sidebar,
+  .transport-seek-row,
+  .keyboard-bar {
+    display: none;
+  }
+  .stage-view {
+    flex: 1 1 0;
+    min-height: 0;
+    height: auto;
+  }
+  .transport {
+    flex: 0 0 auto;
+    padding: 5px 8px;
+    gap: 4px;
+  }
+  .transport-row {
+    flex-wrap: nowrap;
+  }
+  .transport-toggles {
+    gap: 4px;
+    flex-wrap: nowrap;
+  }
+  .toggle {
+    padding: 5px 8px;
+    font-size: 10.5px;
+  }
+  .time-display strong {
+    font-size: 13px;
+  }
+  .keyboard-dock {
+    flex: 0 0 auto;
+    padding: 6px 8px 8px;
+    gap: 0;
+  }
+  .piano {
+    height: 78px;
+    min-width: 760px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.001ms !important;
     transition-duration: 0.001ms !important;
+  }
+}
+
+/* Safe areas for notches, rounded corners and gesture navigation bars. */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .app-header {
+    padding-left: max(20px, env(safe-area-inset-left));
+    padding-right: max(20px, env(safe-area-inset-right));
+  }
+  .app-main {
+    padding-left: max(20px, env(safe-area-inset-left));
+    padding-right: max(20px, env(safe-area-inset-right));
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+  .toast {
+    bottom: calc(26px + env(safe-area-inset-bottom));
+    max-width: min(560px, calc(92vw - env(safe-area-inset-left) - env(safe-area-inset-right)));
+  }
+  .piano-scroll {
+    scroll-padding-left: env(safe-area-inset-left);
   }
 }

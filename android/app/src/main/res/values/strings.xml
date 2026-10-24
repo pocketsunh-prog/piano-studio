@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Piano Studio</string>
+    <string name="title_activity_main">Piano Studio</string>
+    <string name="package_name">com.pianostudio.app</string>
+    <string name="custom_url_scheme">com.pianostudio.app</string>
+</resources>
