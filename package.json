@@ -1,7 +1,7 @@
 {
   "name": "piano-studio",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.2",
   "type": "module",
   "description": "Piano Studio - play, import/export sheet music, and practice with games",
   "scripts": {
@@ -45,3 +45,4 @@
     "sharp@0.32.6": true
   }
 }
+

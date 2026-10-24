@@ -41,6 +41,10 @@ export interface AiCompositionMeta {
   timeSignature: AiTimeSignature;
   difficulty: AiDifficulty;
   seed: number;
+  /** Which generator produced the piece. */
+  provider?: 'local' | 'deepseek';
+  /** Model name for cloud generation. */
+  model?: string;
 }
 
 export interface AiComposition {
@@ -95,6 +99,12 @@ export const AI_KEY_ROOTS: ReadonlyArray<{ value: number; label: string }> = [
 /** Display name for a key (e.g. "A minor", "Eb major"). */
 export function aiKeyName(keyRoot: number, mode: 'major' | 'minor'): string {
   return keyFor(((keyRoot % 12) + 12) % 12, mode).name;
+}
+
+/** Key signature (fifths + mode) for a tonic pitch class. */
+export function aiKeySignature(keyRoot: number, mode: 'major' | 'minor'): KeySignature {
+  const key = keyFor(((keyRoot % 12) + 12) % 12, mode);
+  return { fifths: key.fifths, mode: key.mode };
 }
 
 export const AI_EXAMPLE_PROMPTS: readonly string[] = [
@@ -913,6 +923,7 @@ export function composePianoPiece(options: AiComposeOptions = {}): AiComposition
       timeSignature,
       difficulty,
       seed,
+      provider: 'local',
     },
   };
 }

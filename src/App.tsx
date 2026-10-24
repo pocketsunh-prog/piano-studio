@@ -10,6 +10,7 @@ import { Transport } from './components/Transport';
 import { SongLibrary, type SongEntry, type SongKind } from './components/SongLibrary';
 import { GamesPage, type GameKind } from './components/GamesPage';
 import { AiComposer } from './components/AiComposer';
+import { OnlineSheets } from './components/OnlineSheets';
 import { SoundMeter } from './components/SoundMeter';
 import { DEMO_SONGS } from './music/demo';
 import {
@@ -25,6 +26,7 @@ import { parseScoreFile } from './music/formats/import';
 import { buildExport, scoreFromJson, type ExportFormat } from './music/formats/export';
 import type { Score } from './music/types';
 import type { AiComposition } from './music/ai/composer';
+import type { OnlineSheetResult } from './music/online/commons';
 import { saveBlob } from './platform/saveBlob';
 import {
   isNativeApp,
@@ -76,7 +78,9 @@ function loadLibrary(): SongEntry[] {
           ? 'recording'
           : candidate?.kind === 'ai'
             ? 'ai'
-            : 'imported';
+            : candidate?.kind === 'online'
+              ? 'online'
+              : 'imported';
       stored.push({
         kind,
         score: {
@@ -165,6 +169,7 @@ export default function App() {
   const [importing, setImporting] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const [onlineOpen, setOnlineOpen] = useState(false);
 
   const playback = usePlayback({ score, engine, tempoScale, loop, metronome });
 
@@ -231,7 +236,7 @@ export default function App() {
   }, [playback]);
 
   useQwertyInput({
-    enabled: tab === 'studio' && !aiOpen,
+    enabled: tab === 'studio' && !aiOpen && !onlineOpen,
     octave,
     onNoteOn: handleNoteOn,
     onNoteOff: handleNoteOff,
@@ -395,6 +400,32 @@ export default function App() {
       setTab('studio');
       showToast(
         `AI sheet “${composition.meta.title}” added — press Listen to hear it.`,
+        'success',
+      );
+    },
+    [showToast],
+  );
+
+  const openOnlineSearch = useCallback(() => {
+    playback.pause();
+    setOnlineOpen(true);
+  }, [playback]);
+
+  const handleOnlineImport = useCallback(
+    (imported: Score, result: OnlineSheetResult) => {
+      const entry: SongEntry = {
+        kind: 'online',
+        score: { ...imported, id: `online-${Date.now().toString(36)}` },
+      };
+      setSongs((prev) => [...prev, entry]);
+      setCurrentId(entry.score.id);
+      setOnlineOpen(false);
+      setViewMode('sheet');
+      setTab('studio');
+      showToast(
+        `Imported “${entry.score.title}” from Wikimedia Commons${
+          result.artist ? ` (${result.artist})` : ''
+        } — press Listen to hear it.`,
         'success',
       );
     },
@@ -572,6 +603,7 @@ export default function App() {
                 onImport={handleImportClick}
                 onRemove={handleRemoveSong}
                 onAiCompose={openAiComposer}
+                onOnlineSearch={openOnlineSearch}
               />
             </aside>
 
@@ -595,9 +627,17 @@ export default function App() {
                     type="button"
                     className="ai-cta"
                     onClick={openAiComposer}
-                    title="Generate a new piano sheet with the local AI composer"
+                    title="Generate a new piano sheet with the local or DeepSeek AI composer"
                   >
                     ✦ AI Compose
+                  </button>
+                  <button
+                    type="button"
+                    className="online-cta"
+                    onClick={openOnlineSearch}
+                    title="Search public-domain sheets and MIDI online"
+                  >
+                    ⌕ Online
                   </button>
                   <div className="segmented" role="group" aria-label="Score view">
                     <button
@@ -779,6 +819,14 @@ export default function App() {
 
       {aiOpen && (
         <AiComposer onClose={() => setAiOpen(false)} onCreate={handleAiCreate} />
+      )}
+
+      {onlineOpen && (
+        <OnlineSheets
+          initialQuery={score.title}
+          onClose={() => setOnlineOpen(false)}
+          onImport={handleOnlineImport}
+        />
       )}
     </div>
   );

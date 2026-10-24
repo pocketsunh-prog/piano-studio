@@ -1,7 +1,7 @@
 import type { Score } from '../music/types';
 import { scoreDurationSeconds } from '../music/timing';
 
-export type SongKind = 'demo' | 'imported' | 'recording' | 'ai';
+export type SongKind = 'demo' | 'imported' | 'recording' | 'ai' | 'online';
 
 export interface SongEntry {
   score: Score;
@@ -16,6 +16,7 @@ export interface SongLibraryProps {
   onImport: () => void;
   onRemove: (id: string) => void;
   onAiCompose: () => void;
+  onOnlineSearch: () => void;
 }
 
 function formatDuration(score: Score): string {
@@ -30,6 +31,7 @@ const KIND_LABEL: Record<SongKind, string> = {
   imported: 'Imported',
   recording: 'Recording',
   ai: 'AI',
+  online: 'Online',
 };
 
 export function SongLibrary({
@@ -40,6 +42,7 @@ export function SongLibrary({
   onImport,
   onRemove,
   onAiCompose,
+  onOnlineSearch,
 }: SongLibraryProps) {
   return (
     <div className="library">
@@ -50,9 +53,14 @@ export function SongLibrary({
       <button type="button" className="btn import-button" onClick={onImport} disabled={importing}>
         {importing ? 'Importing…' : '＋ Import sheet (.mid, .xml, .mxl)'}
       </button>
-      <button type="button" className="btn ai-compose-button" onClick={onAiCompose}>
-        <span aria-hidden="true">✦</span> AI Compose
-      </button>
+      <div className="library-actions">
+        <button type="button" className="btn ai-compose-button" onClick={onAiCompose}>
+          <span aria-hidden="true">✦</span> AI Compose
+        </button>
+        <button type="button" className="btn online-button" onClick={onOnlineSearch}>
+          <span aria-hidden="true">⌕</span> Online
+        </button>
+      </div>
 
       <ul className="song-list">
         {songs.map(({ score, kind }) => {
