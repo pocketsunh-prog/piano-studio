@@ -69,7 +69,8 @@ import sheets online**, and practice with two games. It also ships as a native *
 - Import `.mid`, `.midi`, `.musicxml`, `.xml`, `.mxl` (compressed MusicXML) and Piano Studio `.json`,
   or import MIDI directly from the online search.
 - Export the current score as **PDF** (A4 sheet pages), **MusicXML** (sheet), **MIDI**, **JSON**
-  (project) or **SVG** (sheet). PDF pages are paginated between systems and carry page numbers.
+  (project) or **SVG** (sheet). PDF pages are paginated between systems and carry page numbers; very
+  chromatic or note-dense scores automatically switch to one measure per system for clarity.
 - **Rename any imported, recorded, AI or online sheet** with the pencil button in the library; the
   new name is used everywhere, including exports, and persists in the browser.
 - Recording: hit Record, play on the piano, hit Record again — your take is quantized into a score
@@ -131,8 +132,8 @@ Signed release artifacts are included in `release/` (gitignored build output):
 Package      com.pianostudio.app
 Version      1.0.3 (versionCode 4)
 Min SDK      24 (Android 7.0+), target SDK 36
-APK SHA-256  d4017a6be082ae2910a99d740966d9426e0e83bb106847e923cffd3ee96f57cf
-AAB SHA-256  8d9b6e20d1852a530b81b28a4e37dabdc1d6b93987ba17c3ccecbeefee4b50d8
+APK SHA-256  a6f136a5ad05280e9c9fe1f13d6d2ad555031a997716dadf1c8683b4c35ca05e
+AAB SHA-256  f1c622ab5a4f73f6e3a03ac082b13e5f41df46f8f8ffdafa52a2e9249825d07a
 Cert SHA-256 8D:39:AE:54:D9:F8:40:71:B8:3F:0A:6E:B7:9C:56:1C:10:19:F1:A0:8A:9D:FB:93:BF:83:61:AC:7B:12:7A:EA
 ```
 
@@ -228,7 +229,9 @@ use the same mapping.
 - `.mxl` import expects a UTF-8 MusicXML score; `score-timewise` files are rejected with a clear
   message.
 - SVG export renders the notation; MusicXML is the editable/interchange format. PDF export paginates
-  A4 pages between systems and adds page numbers; measure numbers restart on continuation pages.
+  A4 pages between systems, adds page numbers, and uses a roomier adaptive layout (two measures per
+  system normally, one measure per system for very chromatic/note-dense scores). Measure numbers
+  restart on continuation pages.
 - The **local AI composer** is a rules/pattern generative engine (chord progressions, motif
   transforms, seeded randomness). The separate **DeepSeek** dialog (models `deepseek-flash` /
   `deepseek-v4-pro`) sends a free-form text prompt + JSON score schema from your browser directly to
@@ -281,9 +284,10 @@ Playback is a look-ahead scheduler: notes are scheduled into the AudioContext ~0
   and “Composer style” sent “Nocturne in E-flat major” + “Chopin” with no style/key/bar controls. The
   real API was also called from the browser with an invalid key: the request is CORS-readable,
   returns 401, and the UI shows the “API key rejected” message. No real key is stored in the repo.
-- **PDF export** was exercised in headless Chrome: a 189-note AI sheet exported as a 2-page A4 PDF
-  (144 KB). Rendering the PDF with PyMuPDF showed 5 complete systems on page 1 and the final system
-  on page 2, with page numbers and no system cut at a page boundary.
+- **PDF export** was exercised in headless Chrome with a deliberately dense, chromatic 336-note score:
+  the adaptive layout switched to one measure per system and produced 5 readable A4 pages with no
+  notes cut at system/page boundaries. A normal 189-note sheet exported as a 2-page PDF. Rendering
+  the PDFs with PyMuPDF confirmed all systems are complete, with page numbers.
 - **Renaming** was exercised end-to-end: the pencil button renamed a generated sheet to “My Renamed
   Etude”, updated the stage heading and persisted the title in the library.
 - **Online search** was exercised against the live Wikimedia Commons API: “Twinkle, Twinkle, Little

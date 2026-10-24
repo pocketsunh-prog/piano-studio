@@ -48,6 +48,8 @@ export interface RenderScoreOptions {
   width: number;
   /** Maximum number of measures to render (default 400). */
   maxMeasures?: number;
+  /** Force a number of measures per system (useful for roomy PDFs). */
+  measuresPerSystem?: number;
   /** `screen` relies on CSS for ink colours; `export` uses VexFlow's black ink. */
   theme?: 'screen' | 'export';
   /** Extra vertical space above the systems (title area). */
@@ -403,7 +405,10 @@ export function renderScoreInto(
   const topOffset = Math.max(0, options.topOffset ?? (title || subtitle ? 64 : 0));
 
   const model = buildDisplayModel(score, { maxMeasures: options.maxMeasures });
-  const layout = buildScoreLayout(model.measures, width, { topOffset });
+  const layout = buildScoreLayout(model.measures, width, {
+    topOffset,
+    ...(options.measuresPerSystem ? { measuresPerSystem: options.measuresPerSystem } : {}),
+  });
 
   const renderer = new Renderer(host, Renderer.Backends.SVG);
   renderer.resize(layout.width, layout.height);
@@ -431,7 +436,7 @@ export function renderScoreInto(
 }
 
 /** Renders a score to standalone SVG markup (for downloading the sheet as SVG). */
-export function renderScoreSvg(score: Score, options: { width?: number } = {}): string {
+export function renderScoreSvg(score: Score, options: { width?: number; measuresPerSystem?: number } = {}): string {
   if (typeof document === 'undefined') {
     throw new Error('renderScoreSvg requires a browser DOM');
   }
@@ -442,6 +447,7 @@ export function renderScoreSvg(score: Score, options: { width?: number } = {}): 
   const result = renderScoreInto(host, score, {
     width,
     maxMeasures: 400,
+    measuresPerSystem: options.measuresPerSystem,
     theme: 'export',
     topOffset: title || subtitle ? 64 : 16,
     title,
@@ -483,7 +489,7 @@ export interface ScoreSvgPages {
  */
 export function renderScorePagesSvg(
   score: Score,
-  options: { width?: number; pageHeight?: number } = {},
+  options: { width?: number; pageHeight?: number; measuresPerSystem?: number } = {},
 ): ScoreSvgPages {
   if (typeof document === 'undefined') {
     throw new Error('renderScorePagesSvg requires a browser DOM');
@@ -496,6 +502,7 @@ export function renderScorePagesSvg(
   const result = renderScoreInto(host, score, {
     width,
     maxMeasures: 400,
+    measuresPerSystem: options.measuresPerSystem,
     theme: 'export',
     topOffset: title || subtitle ? 64 : 16,
     title,
@@ -570,6 +577,7 @@ export function renderScorePagesSvg(
     const pageResult = renderScoreInto(pageHost, pageScore, {
       width,
       maxMeasures: 400,
+      measuresPerSystem: options.measuresPerSystem,
       theme: 'export',
       topOffset: title || subtitle ? 64 : 16,
       title,
