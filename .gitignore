@@ -3,3 +3,6 @@ dist/
 .shots/
 *.local
 *.log
+
+.tmp/
+.shots/downloads/

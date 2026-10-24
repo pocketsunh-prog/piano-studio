@@ -80,3 +80,20 @@ export function midiToKeyName(midi: number, fifths = 0): string {
 export const MIN_PIANO_MIDI = 21; // A0
 export const MAX_PIANO_MIDI = 108; // C8
 export const MIDDLE_C = 60;
+
+/** Human-readable key signature name, e.g. { fifths: 2, mode: 'major' } -> "D major". */
+export function keySignatureName(fifths: number, mode: 'major' | 'minor'): string {
+  const majorSharp = ['C', 'G', 'D', 'A', 'E', 'B', 'F#', 'C#'];
+  const majorFlat = ['C', 'F', 'Bb', 'Eb', 'Ab', 'Db', 'Gb', 'Cb'];
+  const minorSharp = ['A', 'E', 'B', 'F#', 'C#', 'G#', 'D#', 'A#'];
+  const minorFlat = ['A', 'D', 'G', 'C', 'F', 'Bb', 'Eb', 'Ab'];
+  const clamped = Math.max(-7, Math.min(7, Math.trunc(fifths)));
+  const table = mode === 'minor'
+    ? clamped >= 0
+      ? minorSharp
+      : minorFlat
+    : clamped >= 0
+      ? majorSharp
+      : majorFlat;
+  return `${table[Math.abs(clamped)]} ${mode}`;
+}

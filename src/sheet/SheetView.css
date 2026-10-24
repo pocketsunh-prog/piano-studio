@@ -1,0 +1,107 @@
+/* Piano Studio — sheet-music view (notation scope). Uses the app theme vars. */
+
+.piano-sheet {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  color: var(--text, #e8edf5);
+  background: var(--panel, #151a23);
+  border: 1px solid var(--border, #26303f);
+  border-radius: var(--radius, 12px);
+}
+
+.piano-sheet__head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border, #26303f);
+  background: var(--bg-elev, #11151d);
+}
+
+.piano-sheet__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: 0.2px;
+}
+
+.piano-sheet__composer {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted, #8d99ad);
+}
+
+.piano-sheet__meta {
+  margin-left: auto;
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  color: var(--muted, #8d99ad);
+  text-transform: uppercase;
+}
+
+.piano-sheet__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 10px 6px 18px;
+}
+
+.piano-sheet__stage {
+  position: relative;
+}
+
+.piano-sheet__stage svg {
+  display: block;
+  /* VexFlow draws with black ink by default; inherit the theme ink instead. */
+  fill: var(--text, #e8edf5);
+  stroke: var(--text, #e8edf5);
+}
+
+/* Staff lines a little quieter than the noteheads. */
+.piano-sheet__stage .vf-stave path {
+  stroke: var(--muted, #8d99ad);
+}
+
+.piano-sheet__stage .vf-stavebarline rect,
+.piano-sheet__stage .vf-stave text {
+  fill: var(--muted, #8d99ad);
+}
+
+/* Playback highlight: sounding noteheads/dots/accidentals and stems in amber. */
+.piano-sheet__stage .vf-stavenote.is-sounding .vf-notehead path {
+  fill: var(--accent, #e0b64c);
+}
+
+.piano-sheet__stage .vf-stavenote.is-sounding .vf-stem path {
+  stroke: var(--accent, #e0b64c);
+}
+
+/* Invisible per-measure click targets for click-to-seek. */
+.piano-sheet__stage .piano-sheet__hit {
+  pointer-events: all;
+  cursor: pointer;
+  fill: transparent;
+  transition: fill 120ms ease;
+}
+
+.piano-sheet__stage .piano-sheet__hit:hover {
+  fill: rgba(224, 182, 76, 0.07);
+}
+
+.piano-sheet__more {
+  display: block;
+  margin: 14px auto 4px;
+}
+
+.piano-sheet__error {
+  margin: 12px 8px;
+  color: var(--miss, #ff7b72);
+  font-size: 13px;
+}
