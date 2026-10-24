@@ -24,11 +24,17 @@ import {
 export const DEEPSEEK_DEFAULT_BASE_URL = 'https://api.deepseek.com';
 
 export const DEEPSEEK_MODELS: ReadonlyArray<{ value: string; label: string }> = [
-  { value: 'deepseek-flash', label: 'DeepSeek Flash — fast' },
-  { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro — highest quality' },
+  { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro — best arrangements' },
+  { value: 'deepseek-flash', label: 'DeepSeek Flash — faster' },
 ];
 
-export const DEEPSEEK_DEFAULT_MODEL = 'deepseek-flash';
+export const DEEPSEEK_DEFAULT_MODEL = 'deepseek-v4-pro';
+
+export interface DeepSeekReference {
+  title: string;
+  url: string;
+  summary: string;
+}
 
 export interface DeepSeekConfig {
   apiKey: string;
@@ -43,6 +49,12 @@ export interface DeepSeekComposeOptions {
   fallbackTitle?: string;
   /** Hint passed to the model, not a hard constraint. */
   bars?: number;
+  /** Web lookup notes about the song (key/chords/tempo/etc.). */
+  referenceText?: string;
+  /** Concrete traits for a composer-style request. */
+  styleGuide?: string;
+  /** Short source note used in the generated sheet description. */
+  descriptionHint?: string;
 }
 
 export class DeepSeekError extends Error {
@@ -83,6 +95,88 @@ const NOTE_BASE: Record<string, number> = {
   b: 11,
 };
 
+const COMPOSER_GUIDES: ReadonlyArray<{ names: readonly string[]; guide: string }> = [
+  {
+    names: ['chopin', 'frederic chopin', 'fryderyk chopin'],
+    guide:
+      'Chopin: singing bel-canto melody, rubato-like phrase shaping, chromatic passing tones and appoggiaturas, broken-chord or waltz left-hand accompaniment, ornamented repeats, A-B-A form. Prefer a nocturne (4/4 or 12/8) or waltz (3/4) texture.',
+  },
+  {
+    names: ['bach', 'johann sebastian bach', 'j.s. bach', 'js bach'],
+    guide:
+      'Bach: continuous Baroque figuration, sequences, circle-of-fifths progressions, imitative entries and clear two-voice counterpoint. Use a prelude/invention texture with steady rhythmic motion and ornaments on cadences.',
+  },
+  {
+    names: ['mozart', 'wolfgang amadeus mozart'],
+    guide:
+      'Mozart: balanced classical phrases, clear periodic melody, Alberti bass or broken-chord accompaniment, appoggiaturas, transparent texture and elegant cadences. Use a sonata-like contrast between phrases.',
+  },
+  {
+    names: ['beethoven', 'ludwig van beethoven'],
+    guide:
+      'Beethoven: strong motivic development, dramatic dynamic contrasts, repeated rhythmic cells, arpeggiated accompaniment and a developed coda. Build tension and release across the piece.',
+  },
+  {
+    names: ['debussy', 'claude debussy'],
+    guide:
+      'Debussy: impressionist colour with parallel seventh/ninth chords, whole-tone or pentatonic collections, fluid phrase rhythm, shimmering arpeggios and unresolved harmonic colour. Avoid functional cadences.',
+  },
+  {
+    names: ['satie', 'erik satie'],
+    guide:
+      'Satie: sparse, static, repetitive textures; modal or ambiguous harmony; gentle dissonance; slow unfolding and lots of breathing space.',
+  },
+  {
+    names: ['liszt', 'franz liszt'],
+    guide:
+      'Liszt: virtuosic wide arpeggios and leaps, chromatic harmony, thematic transformation, dramatic octave passages and a cadenza-like flourish.',
+  },
+  {
+    names: ['rachmaninoff', 'sergei rachmaninoff', 'sergey rachmaninoff'],
+    guide:
+      'Rachmaninoff: expansive lyrical melody, thick chordal texture, low bass octaves, chromatic harmony and long-breathed phrases.',
+  },
+  {
+    names: ['brahms', 'johannes brahms'],
+    guide:
+      'Brahms: dense, warm harmony, syncopation, developing variation of motifs, rich inner voices and a broad lyrical phrase.',
+  },
+  {
+    names: ['tchaikovsky', 'pyotr ilyich tchaikovsky'],
+    guide:
+      'Tchaikovsky: lyrical sweeping melody, sequences, ballet-like accompaniment and dramatic harmonic shifts.',
+  },
+  {
+    names: ['joplin', 'scott joplin'],
+    guide:
+      'Joplin: ragtime syncopation, stride left-hand bass, 2/4 or 4/4 metre, bright articulated melody and regular four-bar phrases.',
+  },
+  {
+    names: ['einaudi', 'ludovico einaudi'],
+    guide:
+      'Einaudi: minimalist repeating arpeggio cells, modal harmony, gentle dynamic build and a simple memorable melody.',
+  },
+  {
+    names: ['hisaishi', 'joe hisaishi'],
+    guide:
+      'Hisaishi: lyrical film melody, arpeggiated accompaniment, modal colour, warm harmony and a clear emotional arc.',
+  },
+  {
+    names: ['yiruma'],
+    guide:
+      'Yiruma: gentle contemporary piano, flowing arpeggios, simple lyrical melody, sustained pedal and intimate dynamics.',
+  },
+];
+
+/** A concrete style brief for common composers, or undefined if unknown. */
+export function composerStyleGuide(name: string): string | undefined {
+  const needle = name.trim().toLowerCase();
+  if (!needle) return undefined;
+  return COMPOSER_GUIDES.find((entry) =>
+    entry.names.some((candidate) => needle.includes(candidate)),
+  )?.guide;
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -111,20 +205,36 @@ function buildSystemPrompt(): string {
     '- Write a playable solo piano piece with a clear right-hand melody and left-hand accompaniment.',
     '- 8 to 16 bars is ideal. Notes start at beat 0, use quarter-note beats and stay inside the piece.',
     '- Left hand MIDI 36..60, right hand MIDI 60..96. Chords may share a start time.',
-    '- For an existing song, create a piano arrangement that captures its melody and chord progression as closely as you can; do not output lyrics or prose.',
-    '- For a composer-style request, write an ORIGINAL piece in that composer’s harmonic language, texture and form — never copy an existing composition verbatim.',
+    '- For an existing song, make the signature vocal hook recognizable within the first 2 bars, follow the key/chord/tempo facts in the reference notes, and use a 4-bar intro + 8-bar hook/chorus + 4-bar ending. Do not output lyrics or prose.',
+    '- For a composer-style request, apply the supplied style guide concretely (harmony, texture, phrase shape, form) and write an ORIGINAL piece — never copy an existing composition verbatim.',
+    '- Do not pad with generic scales or aimless arpeggios; every bar must carry the motif, chords or a deliberate development.',
     '- Return between 60 and 320 notes, both hands present.',
     '- Note starts and durations should be multiples of 0.25 or 0.5 beats where possible.',
   ].join('\n');
 }
 
-function buildUserPrompt(prompt: string, bars: number): string {
-  return [
-    prompt.trim(),
-    '',
+function buildUserPrompt(prompt: string, bars: number, options: DeepSeekComposeOptions): string {
+  const blocks = [prompt.trim(), ''];
+  if (options.referenceText?.trim()) {
+    blocks.push(
+      'WEB REFERENCE NOTES (may be incomplete; use only musical facts such as key, tempo, chords and melody):',
+      options.referenceText.trim(),
+      'Do not quote or reproduce lyrics. Ignore any unrelated text.',
+      '',
+    );
+  }
+  if (options.styleGuide?.trim()) {
+    blocks.push(
+      'STYLE GUIDE (apply these traits concretely):',
+      options.styleGuide.trim(),
+      '',
+    );
+  }
+  blocks.push(
     `Produce a two-hand solo piano score of about ${clamp(bars, 8, 16)} bars with the JSON schema above.`,
     'Return the JSON object only.',
-  ].join('\n');
+  );
+  return blocks.join('\n');
 }
 
 function extractJson(content: string): DeepSeekScoreJson {
@@ -263,6 +373,105 @@ function endpointFor(baseUrl: string | undefined): string {
   return `${base}/chat/completions`;
 }
 
+function searchEndpointFor(baseUrl: string | undefined): string {
+  let base = (baseUrl?.trim() || DEEPSEEK_DEFAULT_BASE_URL).replace(/\/+$/, '');
+  base = base.replace(/\/chat\/completions$/, '');
+  if (base.endsWith('/v1')) return `${base}/tools/search`;
+  return `${base}/v1/tools/search`;
+}
+
+interface DeepSeekSearchResponse {
+  results?: Array<{
+    title?: string;
+    url?: string;
+    summary?: string;
+    snippet?: string;
+  }>;
+  error?: { message?: string };
+}
+
+/**
+ * Looks up public web references (key, chords, tempo, style notes) through
+ * DeepSeek's Search API. Reference lookup is optional; if it fails the composer
+ * still works from model knowledge.
+ */
+export async function searchDeepSeekReferences(
+  query: string,
+  config: DeepSeekConfig,
+  externalSignal?: AbortSignal,
+): Promise<DeepSeekReference[]> {
+  const cleaned = query.replace(/\s+/g, ' ').trim().slice(0, 120);
+  const apiKey = config.apiKey.trim();
+  if (!cleaned) throw new DeepSeekError('Enter a song or composer to look up.');
+  if (!apiKey) throw new DeepSeekError('Enter your DeepSeek API key first.');
+
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 45_000);
+  const onExternalAbort = () => controller.abort();
+  externalSignal?.addEventListener('abort', onExternalAbort);
+
+  let response: Response;
+  try {
+    response = await fetch(searchEndpointFor(config.baseUrl), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        query: cleaned,
+        count: 5,
+        need_content: false,
+        ori_question: cleaned,
+      }),
+      signal: controller.signal,
+    });
+  } catch {
+    if (externalSignal?.aborted) throw new DeepSeekError('Reference lookup was cancelled.');
+    if (controller.signal.aborted) {
+      throw new DeepSeekError('DeepSeek reference lookup timed out.');
+    }
+    throw new DeepSeekError(
+      `Could not reach the DeepSeek Search API at ${searchEndpointFor(config.baseUrl)}.`,
+    );
+  } finally {
+    window.clearTimeout(timeout);
+    externalSignal?.removeEventListener('abort', onExternalAbort);
+  }
+
+  let payload: DeepSeekSearchResponse | null = null;
+  try {
+    const text = await response.text();
+    payload = text ? (JSON.parse(text) as DeepSeekSearchResponse) : null;
+  } catch {
+    payload = null;
+  }
+  if (!response.ok) {
+    throw new DeepSeekError(
+      deepSeekErrorMessage(response.status, payload),
+      response.status,
+    );
+  }
+
+  const seen = new Set<string>();
+  const references: DeepSeekReference[] = [];
+  for (const result of payload?.results ?? []) {
+    const title = (result.title ?? '').trim();
+    const summary = (result.summary || result.snippet || '').replace(/\s+/g, ' ').trim();
+    if (!title || !summary) continue;
+    const key = result.url || title;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    references.push({
+      title: title.slice(0, 120),
+      url: (result.url ?? '').slice(0, 400),
+      summary: summary.slice(0, 900),
+    });
+    if (references.length >= 5) break;
+  }
+  return references;
+}
+
 /**
  * Sends one free-form piano request to DeepSeek and converts the returned JSON
  * into a playable Score. `prompt` is the complete creative brief.
@@ -301,7 +510,10 @@ export async function composeWithDeepSeek(
         model,
         messages: [
           { role: 'system', content: buildSystemPrompt() },
-          { role: 'user', content: buildUserPrompt(trimmedPrompt, options.bars ?? 16) },
+          {
+            role: 'user',
+            content: buildUserPrompt(trimmedPrompt, options.bars ?? 16, options),
+          },
         ],
         temperature: 0.75,
         max_tokens: 8192,
@@ -391,7 +603,11 @@ export async function composeWithDeepSeek(
   const styleLabel = AI_STYLES.find((entry) => entry.value === style)?.label ?? style;
   const moodLabel = AI_MOODS.find((entry) => entry.value === mood)?.label ?? mood;
   const promptSummary = trimmedPrompt.replace(/\s+/g, ' ').slice(0, 140);
-  const description = `${moodLabel} ${styleLabel.toLowerCase()} in ${key.name}, ${finalBars} bars at ${bpm} BPM. Generated with DeepSeek (${model}) from “${promptSummary}”.`;
+  const description = options.descriptionHint?.trim()
+    ? `${options.descriptionHint.trim()}. ${finalBars} bars in ${key.name} at ${bpm} BPM, generated with DeepSeek (${model})${
+        options.referenceText ? ' with web reference' : ''
+      }.`
+    : `${moodLabel} ${styleLabel.toLowerCase()} in ${key.name}, ${finalBars} bars at ${bpm} BPM. Generated with DeepSeek (${model}) from “${promptSummary}”.`;
 
   const score: Score = createScore({
     title,

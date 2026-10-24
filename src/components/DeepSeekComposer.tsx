@@ -3,8 +3,11 @@ import {
   DEEPSEEK_DEFAULT_BASE_URL,
   DEEPSEEK_DEFAULT_MODEL,
   DEEPSEEK_MODELS,
+  composerStyleGuide,
   composeWithDeepSeek,
+  searchDeepSeekReferences,
   type DeepSeekConfig,
+  type DeepSeekReference,
 } from '../music/ai/deepseek';
 import { loadDeepSeekSettings, saveDeepSeekSettings } from '../music/ai/deepseekSettings';
 import type { AiComposition } from '../music/ai/composer';
@@ -30,7 +33,9 @@ export function DeepSeekComposer({ onClose, onCreate }: DeepSeekComposerProps) {
   const [sheetTitle, setSheetTitle] = useState('');
   const [composerName, setComposerName] = useState('');
   const [apiKey, setApiKey] = useState(stored.apiKey ?? '');
-  const [model, setModel] = useState(stored.model ?? DEEPSEEK_DEFAULT_MODEL);
+  const [model, setModel] = useState(() =>
+    stored.modelMigrated ? (stored.model ?? DEEPSEEK_DEFAULT_MODEL) : DEEPSEEK_DEFAULT_MODEL,
+  );
   const [baseUrl, setBaseUrl] = useState(stored.baseUrl ?? DEEPSEEK_DEFAULT_BASE_URL);
   const [rememberKey, setRememberKey] = useState(Boolean(stored.remember));
   const [showKey, setShowKey] = useState(false);
@@ -38,11 +43,21 @@ export function DeepSeekComposer({ onClose, onCreate }: DeepSeekComposerProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AiComposition | null>(null);
+  const [useReference, setUseReference] = useState(true);
+  const [manualReference, setManualReference] = useState('');
+  const [status, setStatus] = useState<string | null>(null);
+  const [referenceNote, setReferenceNote] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const songRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    saveDeepSeekSettings({ apiKey, model, baseUrl, remember: rememberKey });
+    saveDeepSeekSettings({
+      apiKey,
+      model,
+      baseUrl,
+      remember: rememberKey,
+      modelMigrated: true,
+    });
   }, [apiKey, model, baseUrl, rememberKey]);
 
   useEffect(() => {
@@ -79,8 +94,8 @@ export function DeepSeekComposer({ onClose, onCreate }: DeepSeekComposerProps) {
 
     const prompt =
       mode === 'song'
-        ? `Arrange the song "${song}" as a solo piano piece. If you know the song, use its recognizable melody and chord progression. Write a full two-hand arrangement with the melody in the right hand and accompaniment in the left.`
-        : `Compose an original solo piano piece titled "${title}" in the style of ${composer}. Capture that composer’s characteristic harmony, texture, phrasing and form; do not copy an existing composition.`;
+        ? `Arrange the song "${song}" as a solo piano piece. Make the signature vocal hook recognizable within the first two bars, follow the song's key and chord progression, and structure the arrangement as a 4-bar intro + 8-bar hook/chorus + 4-bar ending. Put the melody in the right hand and accompaniment in the left.`
+        : `Compose an original solo piano piece titled "${title}" in the style of ${composer}. Apply the style guide concretely — harmony, texture, phrase shape and form — and do not copy an existing composition.`;
     const config: DeepSeekConfig = { apiKey, model, baseUrl };
     const options =
       mode === 'song'
@@ -89,6 +104,7 @@ export function DeepSeekComposer({ onClose, onCreate }: DeepSeekComposerProps) {
             mood: 'happy' as const,
             difficulty: 'medium' as const,
             fallbackTitle: `${song} (Piano Arrangement)`,
+            descriptionHint: `Piano arrangement of “${song}”`,
             bars: 16,
           }
         : {
@@ -96,16 +112,84 @@ export function DeepSeekComposer({ onClose, onCreate }: DeepSeekComposerProps) {
             mood: 'dreamy' as const,
             difficulty: 'medium' as const,
             fallbackTitle: title,
+            descriptionHint: `Original piece in the style of ${composer}`,
             bars: 16,
           };
 
     setBusy(true);
     setError(null);
+    setReferenceNote(null);
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    const styleGuide = mode === 'composer' ? composerStyleGuide(composer) : undefined;
+    const manual = mode === 'song' ? manualReference.trim().slice(0, 2000) : '';
+    let referenceText = manual ? `USER-PROVIDED MELODY/CHORDS:\n${manual}` : '';
     try {
-      const composition = await composeWithDeepSeek(prompt, config, options, controller.signal);
+      if (useReference) {
+        try {
+        setStatus(
+          mode === 'song'
+            ? 'Looking up song references…'
+            : styleGuide
+              ? 'Preparing composer style…'
+              : 'Looking up composer style…',
+        );
+        let references: DeepSeekReference[] = [];
+        if (mode === 'song') {
+          references = await searchDeepSeekReferences(
+            `${song} piano chords key tempo melody notes`,
+            config,
+            controller.signal,
+          );
+        } else if (!styleGuide) {
+          references = await searchDeepSeekReferences(
+            `${composer} piano composition style harmony texture form`,
+            config,
+            controller.signal,
+          );
+        }
+        if (controller.signal.aborted) return;
+        if (references.length) {
+          const webReferences = references
+            .map((reference, index) => `${index + 1}. ${reference.title}: ${reference.summary}`)
+            .join('\n');
+          referenceText = [referenceText, `WEB LOOKUP:\n${webReferences}`]
+            .filter(Boolean)
+            .join('\n\n');
+          setReferenceNote(
+            `Used ${references.length} web reference${references.length === 1 ? '' : 's'}${
+              manual ? ' + your pasted reference' : ''
+            }.`,
+          );
+        } else if (mode === 'song') {
+          setReferenceNote(
+            manual
+              ? 'Using your pasted melody/chords (no extra web reference found).'
+              : 'No web reference found; composing from model knowledge.',
+          );
+        } else if (!styleGuide) {
+          setReferenceNote('No style reference found; composing from model knowledge.');
+        } else {
+          setReferenceNote(`Using the built-in ${composer} style guide.`);
+        }
+        } catch {
+          if (controller.signal.aborted) return;
+          setReferenceNote('Reference lookup unavailable; composing from model knowledge.');
+        }
+      } else if (manual) {
+        setReferenceNote('Using your pasted melody/chords.');
+      } else if (styleGuide) {
+        setReferenceNote(`Using the built-in ${composer} style guide.`);
+      }
+
+      setStatus('DeepSeek is composing…');
+      const composition = await composeWithDeepSeek(
+        prompt,
+        config,
+        { ...options, referenceText, styleGuide },
+        controller.signal,
+      );
       if (!controller.signal.aborted) setResult(composition);
     } catch (generationError) {
       if (!controller.signal.aborted) {
@@ -116,6 +200,7 @@ export function DeepSeekComposer({ onClose, onCreate }: DeepSeekComposerProps) {
         );
       }
     } finally {
+      setStatus(null);
       if (abortRef.current === controller) {
         abortRef.current = null;
         setBusy(false);
@@ -193,6 +278,11 @@ export function DeepSeekComposer({ onClose, onCreate }: DeepSeekComposerProps) {
                       </option>
                     ))}
                   </select>
+                  <small className={`deepseek-model-note ${model === 'deepseek-flash' ? 'warn' : ''}`}>
+                    {model === 'deepseek-flash'
+                      ? 'Flash is faster but may produce more generic arrangements; V4 Pro is recommended.'
+                      : 'V4 Pro is recommended for closer song and composer results.'}
+                  </small>
                 </label>
                 <label className="ai-check">
                   <input
@@ -250,6 +340,18 @@ export function DeepSeekComposer({ onClose, onCreate }: DeepSeekComposerProps) {
               </button>
             </div>
 
+            <label className="deepseek-check">
+              <input
+                type="checkbox"
+                checked={useReference}
+                onChange={(event) => setUseReference(event.target.checked)}
+              />
+              <span>
+                Look up song/style details online
+                <em>DeepSeek Search · one extra request</em>
+              </span>
+            </label>
+
             {mode === 'song' ? (
               <>
                 <label className="ai-prompt-label" htmlFor="deepseek-song">
@@ -280,9 +382,24 @@ export function DeepSeekComposer({ onClose, onCreate }: DeepSeekComposerProps) {
                   ))}
                 </div>
                 <p className="deepseek-hint">
-                  DeepSeek writes a playable two-hand piano arrangement. If it does not know the
-                  song, it creates an original piece in a similar pop style.
+                  DeepSeek looks up key/chords/hook references online, then writes a playable
+                  two-hand arrangement. If the song still sounds too generic, paste the melody or
+                  chords below.
                 </p>
+                <details className="deepseek-manual-ref">
+                  <summary>Optional: paste melody notes or chords</summary>
+                  <textarea
+                    value={manualReference}
+                    onChange={(event) => setManualReference(event.target.value)}
+                    rows={3}
+                    maxLength={2000}
+                    placeholder="e.g. G#4 G#4 F#4 E4 … or C#m | F#m | A | B"
+                  />
+                  <span>
+                    Melody as note names, or chord symbols per bar. This is passed to DeepSeek as
+                    the reference to follow.
+                  </span>
+                </details>
               </>
             ) : (
               <>
@@ -333,6 +450,10 @@ export function DeepSeekComposer({ onClose, onCreate }: DeepSeekComposerProps) {
               </>
             )}
 
+            {referenceNote ? (
+              <p className="deepseek-reference-note">{referenceNote}</p>
+            ) : null}
+
             {error ? (
               <div className="ai-error" role="alert">
                 {error}
@@ -345,11 +466,13 @@ export function DeepSeekComposer({ onClose, onCreate }: DeepSeekComposerProps) {
               onClick={() => void generate()}
               disabled={busy}
             >
-              {busy ? 'DeepSeek is composing…' : '✦ Generate with DeepSeek'}
+              {busy ? (status ?? 'DeepSeek is composing…') : '✦ Generate with DeepSeek'}
             </button>
             <p className="deepseek-note">
-              Song arrangements are generated by AI for personal practice; respect the original
-              song’s copyright. DeepSeek usage is billed to your API account.
+              DeepSeek arrangements are AI approximations. Web lookup improves key/chord/style
+              matching, but for exact notes import a MIDI. Song arrangements are for personal
+              practice; respect the original song’s copyright. DeepSeek usage and Search requests
+              are billed to your API account.
             </p>
           </div>
 

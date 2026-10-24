@@ -5,6 +5,8 @@ export interface DeepSeekSettings {
   model?: string;
   baseUrl?: string;
   remember?: boolean;
+  /** Set after the one-time switch to V4 Pro for better arrangements. */
+  modelMigrated?: boolean;
 }
 
 const STORAGE_KEY = 'piano-studio.deepseek.v1';

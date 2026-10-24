@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DEEPSEEK_DEFAULT_BASE_URL,
+  DEEPSEEK_DEFAULT_MODEL,
   DeepSeekError,
+  composerStyleGuide,
   composeWithDeepSeek,
+  searchDeepSeekReferences,
   type DeepSeekComposeOptions,
 } from './deepseek';
 
@@ -96,13 +99,35 @@ describe('composeWithDeepSeek (free-form)', () => {
     expect(result.score.tempo[0].bpm).toBe(96);
     expect(result.meta).toMatchObject({
       provider: 'deepseek',
-      model: 'deepseek-flash',
+      model: DEEPSEEK_DEFAULT_MODEL,
       style: 'pop',
       mood: 'happy',
       bars: 8,
       title: 'Shape of You — Piano Arrangement',
       keyName: 'D major',
     });
+  });
+
+  it('passes web references and a composer style guide to the model', async () => {
+    const fetchMock = mockFetchWith(JSON.stringify(makeScoreJson()));
+    await composeWithDeepSeek(
+      'Write a Chopin-style nocturne.',
+      { apiKey: 'sk-test' },
+      {
+        ...options,
+        referenceText: 'Key: E-flat major; chords: Ebmaj7 | Cm7 | Abmaj7 | Bb7.',
+        styleGuide: composerStyleGuide('Chopin'),
+      },
+    );
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as {
+      messages: Array<{ content: string }>;
+    };
+    const userPrompt = body.messages[1].content;
+    expect(userPrompt).toContain('WEB REFERENCE NOTES');
+    expect(userPrompt).toContain('Ebmaj7');
+    expect(userPrompt).toContain('STYLE GUIDE');
+    expect(userPrompt).toContain('rubato');
   });
 
   it('accepts string keys and markdown fences', async () => {
@@ -174,5 +199,81 @@ describe('composeWithDeepSeek (free-form)', () => {
     await expect(composeWithDeepSeek(prompt, { apiKey: 'sk-test' })).rejects.toMatchObject({
       status: 503,
     });
+  });
+
+  it('exposes concrete style guides for common composers', () => {
+    expect(composerStyleGuide('Chopin')).toContain('rubato');
+    expect(composerStyleGuide('J.S. Bach')).toContain('counterpoint');
+    expect(composerStyleGuide('Debussy')).toContain('whole-tone');
+    expect(composerStyleGuide('An Unknown Composer')).toBeUndefined();
+  });
+});
+
+describe('searchDeepSeekReferences', () => {
+  const searchPayload = {
+    results: [
+      {
+        title: 'Shape of You chords',
+        url: 'https://example.com/shape',
+        summary: 'Key: C# minor. Chords: C#m | F#m | A | B. Tempo 96 BPM.',
+        snippet: 'ignored',
+      },
+      {
+        title: 'Shape of You piano tutorial',
+        url: 'https://example.com/tutorial',
+        summary: 'The vocal hook begins on the tonic and descends to the fifth.',
+      },
+    ],
+  };
+
+  it('calls the DeepSeek Search API and maps results', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify(searchPayload),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const references = await searchDeepSeekReferences(
+      'Shape of You piano chords',
+      { apiKey: 'sk-test' },
+    );
+    expect(references).toHaveLength(2);
+    expect(references[0]).toMatchObject({
+      title: 'Shape of You chords',
+      url: 'https://example.com/shape',
+    });
+    expect(references[0].summary).toContain('C# minor');
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('https://api.deepseek.com/v1/tools/search');
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer sk-test');
+    const body = JSON.parse(init.body as string) as {
+      query: string;
+      count: number;
+      need_content: boolean;
+    };
+    expect(body.query).toContain('Shape of You');
+    expect(body.count).toBe(5);
+    expect(body.need_content).toBe(false);
+  });
+
+  it('surfaces search authentication failures', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 401,
+        text: async () => JSON.stringify({ error: { message: 'bad key' } }),
+      })),
+    );
+    const error = await searchDeepSeekReferences('test', { apiKey: 'bad' }).catch((err) => err);
+    expect(error).toBeInstanceOf(DeepSeekError);
+    expect((error as DeepSeekError).status).toBe(401);
+  });
+
+  it('rejects empty queries and keys', async () => {
+    await expect(searchDeepSeekReferences('   ', { apiKey: 'sk-test' })).rejects.toThrow(
+      /song or composer/i,
+    );
+    await expect(searchDeepSeekReferences('test', { apiKey: '  ' })).rejects.toThrow(/API key/i);
   });
 });
