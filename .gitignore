@@ -9,3 +9,8 @@ dist/
 
 release/
 
+# Android signing secrets
+android/keystore.properties
+android/*.keystore
+android/*.jks
+

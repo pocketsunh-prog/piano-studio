@@ -66,25 +66,70 @@ browser support.
 
 The app is wrapped with [Capacitor](https://capacitorjs.com) and runs as a native Android app with
 a dark splash screen, status-bar theming, hardware back navigation, screen wake-lock while
-playing, and Android share-sheet exports. A ready-to-install debug APK is included at
-`release/PianoStudio-1.0-debug.apk`.
+playing, and Android share-sheet exports.
 
-Install it on a phone with USB debugging, or copy it to the device and open it (allow “install
-unknown apps” for your file manager):
+Signed release artifacts are included in `release/` (gitignored build output):
 
-```bash
-adb install -r release/PianoStudio-1.0-debug.apk
+| Artifact | Size | Use |
+| --- | --- | --- |
+| `release/PianoStudio-1.0.0-release.apk` | 6.0 MiB | sideload / direct install |
+| `release/PianoStudio-1.0.0-release.aab` | 5.8 MiB | Google Play Console upload |
+| `release/SHA256SUMS.txt` | — | integrity checksums |
+
+```text
+Package      com.pianostudio.app
+Version      1.0.0 (versionCode 1)
+Min SDK      24 (Android 7.0+), target SDK 36
+APK SHA-256  9817fc61eba9b11515210bd732c66db62600bd5599aa6ec82ee3797747537709
+AAB SHA-256  4b703430d663e3f2906d13be3e50e880d9efdfb4fcf4f43c59c74d25eedeb1f5
+Cert SHA-256 8D:39:AE:54:D9:F8:40:71:B8:3F:0A:6E:B7:9C:56:1C:10:19:F1:A0:8A:9D:FB:93:BF:83:61:AC:7B:12:7A:EA
 ```
 
-Build it yourself (JDK 21 + Android SDK with platform 36 required):
+Install the signed release over USB debugging, or copy the APK to the phone and open it (allow
+“install unknown apps” for your file manager):
 
 ```bash
-npm run android:build     # web build → cap sync → Gradle assembleDebug
-# output: android/app/build/outputs/apk/debug/app-debug.apk
+adb install -r release/PianoStudio-1.0.0-release.apk
+```
+
+If an older debug build is installed, uninstall it first — it uses a different signing key:
+
+```bash
+adb uninstall com.pianostudio.app
+```
+
+### Signed release builds
+
+Release builds are signed with the RSA-2048 keystore at
+`android/piano-studio-release.keystore` (alias `piano-studio`, certificate valid until 2054).
+The credentials are read from `android/keystore.properties`; **both files are gitignored — back
+them up**, because Android will only accept future updates signed with the same key.
+
+`android/keystore.properties.example` is the template. The Gradle config automatically uses the
+release keystore when `keystore.properties` exists; otherwise `assembleRelease` produces an
+unsigned APK and the debug build is unaffected.
+
+```bash
+npm run android:release   # web build → cap sync → assembleRelease + bundleRelease
+# APK: android/app/build/outputs/apk/release/app-release.apk
+# AAB: android/app/build/outputs/bundle/release/app-release.aab
+
+# verify the signature and checksum
+apksigner verify --print-certs android/app/build/outputs/apk/release/app-release.apk
+sha256sum release/PianoStudio-1.0.0-release.apk
+```
+
+On macOS/Linux, use `./gradlew assembleRelease bundleRelease` instead of the Windows
+`gradlew.bat` wrapper used by the npm scripts.
+
+Debug build (debug keystore, WebView debugging enabled):
+
+```bash
+npm run android:build     # → android/app/build/outputs/apk/debug/app-debug.apk
 npm run android:open      # open the project in Android Studio
 ```
 
-Android-specific behaviour:
+### Android behaviour
 
 - **Back button**: closes a game → returns to the games page → returns to Studio → exits the app.
 - **Exports** (MusicXML/MIDI/JSON/SVG): opened through the Android share sheet so you can save to
@@ -158,6 +203,8 @@ Playback is a look-ahead scheduler: notes are scheduled into the AudioContext ~0
   transport, the falling-notes canvas rendered, MusicXML import via the system picker added the
   score (78 notes), the share sheet opened with the exported `.musicxml`, hardware Back navigated
   game → games page → Studio → exit, and both portrait and landscape layouts were checked.
+- The signed 1.0.0 release build was verified with `apksigner` (APK Signature Scheme v2, RSA-2048)
+  and installed cleanly on a fresh Android 14 emulator.
 
 ## Credits
 

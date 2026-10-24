@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "android:sync": "npm run build && cap sync android",
     "android:build": "npm run android:sync && cd android && gradlew.bat assembleDebug",
+    "android:release": "npm run android:sync && cd android && gradlew.bat assembleRelease bundleRelease",
     "android:open": "cap open android"
   },
   "dependencies": {
