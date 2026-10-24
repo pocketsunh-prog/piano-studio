@@ -10,6 +10,7 @@ import { Transport } from './components/Transport';
 import { SongLibrary, type SongEntry, type SongKind } from './components/SongLibrary';
 import { GamesPage, type GameKind } from './components/GamesPage';
 import { AiComposer } from './components/AiComposer';
+import { DeepSeekComposer } from './components/DeepSeekComposer';
 import { OnlineSheets } from './components/OnlineSheets';
 import { SoundMeter } from './components/SoundMeter';
 import { DEMO_SONGS } from './music/demo';
@@ -78,9 +79,11 @@ function loadLibrary(): SongEntry[] {
           ? 'recording'
           : candidate?.kind === 'ai'
             ? 'ai'
-            : candidate?.kind === 'online'
-              ? 'online'
-              : 'imported';
+            : candidate?.kind === 'deepseek'
+              ? 'deepseek'
+              : candidate?.kind === 'online'
+                ? 'online'
+                : 'imported';
       stored.push({
         kind,
         score: {
@@ -169,6 +172,7 @@ export default function App() {
   const [importing, setImporting] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const [deepseekOpen, setDeepseekOpen] = useState(false);
   const [onlineOpen, setOnlineOpen] = useState(false);
 
   const playback = usePlayback({ score, engine, tempoScale, loop, metronome });
@@ -236,7 +240,7 @@ export default function App() {
   }, [playback]);
 
   useQwertyInput({
-    enabled: tab === 'studio' && !aiOpen && !onlineOpen,
+    enabled: tab === 'studio' && !aiOpen && !deepseekOpen && !onlineOpen,
     octave,
     onNoteOn: handleNoteOn,
     onNoteOff: handleNoteOff,
@@ -323,7 +327,7 @@ export default function App() {
   );
 
   const handleExport = useCallback(
-    async (format: ExportFormat | 'svg') => {
+    async (format: ExportFormat | 'svg' | 'pdf') => {
       try {
         let blob: Blob;
         let fileName: string;
@@ -339,6 +343,13 @@ export default function App() {
           blob = new Blob([svg], { type: 'image/svg+xml' });
           fileName = `${slugify(score.title)}.svg`;
           label = 'SVG sheet';
+        } else if (format === 'pdf') {
+          showToast('Preparing PDF sheet…', 'info');
+          const { createScorePdf } = await import('./export/pdf');
+          const pdf = await createScorePdf(score);
+          blob = pdf.blob;
+          fileName = `${slugify(score.title)}.pdf`;
+          label = `PDF sheet (${pdf.pages} page${pdf.pages === 1 ? '' : 's'})`;
         } else {
           const exported = buildExport(score, format);
           const payload =
@@ -385,9 +396,30 @@ export default function App() {
     [songs, currentId],
   );
 
+  const handleRenameSong = useCallback(
+    (id: string, title: string) => {
+      const clean = title.trim();
+      if (!clean) return;
+      setSongs((prev) =>
+        prev.map((entry) =>
+          entry.score.id === id
+            ? { ...entry, score: { ...entry.score, title: clean } }
+            : entry,
+        ),
+      );
+      showToast(`Renamed sheet to “${clean}”.`, 'success');
+    },
+    [showToast],
+  );
+
   const openAiComposer = useCallback(() => {
     playback.pause();
     setAiOpen(true);
+  }, [playback]);
+
+  const openDeepSeekComposer = useCallback(() => {
+    playback.pause();
+    setDeepseekOpen(true);
   }, [playback]);
 
   const handleAiCreate = useCallback(
@@ -400,6 +432,25 @@ export default function App() {
       setTab('studio');
       showToast(
         `AI sheet “${composition.meta.title}” added — press Listen to hear it.`,
+        'success',
+      );
+    },
+    [showToast],
+  );
+
+  const handleDeepSeekCreate = useCallback(
+    (composition: AiComposition) => {
+      const entry: SongEntry = {
+        score: { ...composition.score, id: `deepseek-${Date.now().toString(36)}` },
+        kind: 'deepseek',
+      };
+      setSongs((prev) => [...prev, entry]);
+      setCurrentId(entry.score.id);
+      setDeepseekOpen(false);
+      setViewMode('sheet');
+      setTab('studio');
+      showToast(
+        `DeepSeek sheet “${composition.meta.title}” added — press Listen to hear it.`,
         'success',
       );
     },
@@ -602,7 +653,9 @@ export default function App() {
                 onSelect={setCurrentId}
                 onImport={handleImportClick}
                 onRemove={handleRemoveSong}
+                onRename={handleRenameSong}
                 onAiCompose={openAiComposer}
+                onDeepSeek={openDeepSeekComposer}
                 onOnlineSearch={openOnlineSearch}
               />
             </aside>
@@ -627,9 +680,17 @@ export default function App() {
                     type="button"
                     className="ai-cta"
                     onClick={openAiComposer}
-                    title="Generate a new piano sheet with the local or DeepSeek AI composer"
+                    title="Generate a new piano sheet with the offline local composer"
                   >
                     ✦ AI Compose
+                  </button>
+                  <button
+                    type="button"
+                    className="deepseek-cta"
+                    onClick={openDeepSeekComposer}
+                    title="Arrange a song or compose in a composer's style with DeepSeek"
+                  >
+                    ◇ DeepSeek
                   </button>
                   <button
                     type="button"
@@ -657,6 +718,9 @@ export default function App() {
                   </div>
                   <div className="export-group">
                     <span className="export-label">Export</span>
+                    <button type="button" onClick={() => void handleExport('pdf')}>
+                      PDF
+                    </button>
                     <button type="button" onClick={() => void handleExport('musicxml')}>
                       MusicXML
                     </button>
@@ -819,6 +883,13 @@ export default function App() {
 
       {aiOpen && (
         <AiComposer onClose={() => setAiOpen(false)} onCreate={handleAiCreate} />
+      )}
+
+      {deepseekOpen && (
+        <DeepSeekComposer
+          onClose={() => setDeepseekOpen(false)}
+          onCreate={handleDeepSeekCreate}
+        />
       )}
 
       {onlineOpen && (

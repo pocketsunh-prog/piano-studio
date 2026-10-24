@@ -30,21 +30,30 @@ import sheets online**, and practice with two games. It also ships as a native *
 
 ![Listening to the sheet with the live sound meter](docs/listening.png)
 
-**AI composer**
+**AI composer (local)**
 - Generate a new two-hand piano sheet from a text prompt or controls: style (classical, romantic,
   pop, ambient, jazz, waltz), mood, key/mode, 8–32 bars, meter, difficulty and tempo.
-- **Two generators**: a fully offline local composer (no key), or **DeepSeek** using your own API
-  key — models `deepseek-flash` (fast) and `deepseek-v4-pro` (highest quality). The DeepSeek mode
-  sends a JSON-score prompt directly from your browser to `api.deepseek.com`; the API key is kept in
-  memory, or in browser storage only if you tick “Remember on this device”.
 - The local composer builds a chord progression, accompaniment pattern, motif-based melody,
-  cadences and coda; it is deterministic per seed and works without a network.
+  cadences and coda; it is deterministic per seed and works without a network or API key.
 - Preview, regenerate, then open in Studio: sheets play with sound, can be practiced, recorded
-  over, and exported as MusicXML/MIDI/JSON/SVG. They appear in the library with an **AI** badge.
+  over, and exported as PDF/MusicXML/MIDI/JSON/SVG. They appear in the library with an **AI** badge.
 
 ![AI piano sheet composer](docs/ai-composer.png)
 
-![DeepSeek generation in the AI composer](docs/deepseek.png)
+**DeepSeek AI (optional, separate dialog)**
+- A dedicated **DeepSeek** dialog with just text input — no style, key, bar or tempo controls:
+  - **Song → piano**: type a pop song and artist (e.g. “Shape of You — Ed Sheeran”) and DeepSeek
+    writes a two-hand solo-piano arrangement.
+  - **Composer style**: type a new piano sheet name and a composer name (e.g. “Nocturne in E-flat
+    major” + “Chopin”) and DeepSeek composes an original piece in that composer’s style.
+- Models `deepseek-flash` (fast) and `deepseek-v4-pro` (highest quality). The prompt and JSON score
+  schema go directly from your browser to `api.deepseek.com`; the API key is kept in memory, or in
+  browser storage only if you tick “Remember on this device”. Usage is billed by DeepSeek.
+- Every returned score is validated into a playable two-hand score before it is accepted. DeepSeek
+  requests are capped at 16 bars. Opened sheets get a **DeepSeek** badge. Song arrangements are
+  AI-generated for personal practice; respect the original song’s copyright.
+
+![DeepSeek piano arranger](docs/deepseek.png)
 
 **Online sheet search**
 - Search by song name or composer and browse **public-domain MIDI performances and PDF sheet scans
@@ -56,14 +65,21 @@ import sheets online**, and practice with two games. It also ships as a native *
 
 ![Online sheet search](docs/online-search.png)
 
-**Import / export**
+**Import / export / rename**
 - Import `.mid`, `.midi`, `.musicxml`, `.xml`, `.mxl` (compressed MusicXML) and Piano Studio `.json`,
   or import MIDI directly from the online search.
-- Export the current score as **MusicXML** (sheet), **MIDI**, **JSON** (project) or **SVG** (sheet).
+- Export the current score as **PDF** (A4 sheet pages), **MusicXML** (sheet), **MIDI**, **JSON**
+  (project) or **SVG** (sheet). PDF pages are paginated between systems and carry page numbers.
+- **Rename any imported, recorded, AI or online sheet** with the pencil button in the library; the
+  new name is used everywhere, including exports, and persists in the browser.
 - Recording: hit Record, play on the piano, hit Record again — your take is quantized into a score
   that you can read, play back and export as sheet music.
 - Demo library: Twinkle Twinkle, Ode to Joy, Für Elise, Canon in D, C major scale.
 - Imported, recorded, AI-generated and online songs persist in the browser.
+
+![Renaming an imported/generated sheet](docs/rename-sheet.png)
+
+![Exported PDF sheet](docs/pdf-sheet.png)
 
 **Practice games**
 - **Falling Notes** — notes fall toward the hit line; press the matching key. Perfect/great/good
@@ -99,23 +115,24 @@ browser support.
 
 The app is wrapped with [Capacitor](https://capacitorjs.com) and runs as a native Android app with
 a dark splash screen, status-bar theming, hardware back navigation, screen wake-lock while
-playing, and Android share-sheet exports. It includes the local/DeepSeek AI composer, online sheet
-search, and the audible sheet playback with live sound meter.
+playing, and Android share-sheet exports. It includes the local composer, the separate DeepSeek
+song/composer arranger, online sheet search, PDF/notation export, renaming, and audible sheet
+playback with live sound meter.
 
 Signed release artifacts are included in `release/` (gitignored build output):
 
 | Artifact | Size | Use |
 | --- | --- | --- |
-| `release/PianoStudio-1.0.2-release.apk` | 6.0 MiB | sideload / direct install |
-| `release/PianoStudio-1.0.2-release.aab` | 5.9 MiB | Google Play Console upload |
+| `release/PianoStudio-1.0.3-release.apk` | 6.2 MiB | sideload / direct install |
+| `release/PianoStudio-1.0.3-release.aab` | 6.1 MiB | Google Play Console upload |
 | `release/SHA256SUMS.txt` | — | integrity checksums |
 
 ```text
 Package      com.pianostudio.app
-Version      1.0.2 (versionCode 3)
+Version      1.0.3 (versionCode 4)
 Min SDK      24 (Android 7.0+), target SDK 36
-APK SHA-256  d641c505f6f3328eb75a7ea11e7e4e5ca4758424df58dc0c4d03748c674828cb
-AAB SHA-256  309734d07584383e160e05a50216ff284b0c917247a6ae0874e224a87c9cb4db
+APK SHA-256  d4017a6be082ae2910a99d740966d9426e0e83bb106847e923cffd3ee96f57cf
+AAB SHA-256  8d9b6e20d1852a530b81b28a4e37dabdc1d6b93987ba17c3ccecbeefee4b50d8
 Cert SHA-256 8D:39:AE:54:D9:F8:40:71:B8:3F:0A:6E:B7:9C:56:1C:10:19:F1:A0:8A:9D:FB:93:BF:83:61:AC:7B:12:7A:EA
 ```
 
@@ -123,7 +140,7 @@ Install the signed release over USB debugging, or copy the APK to the phone and 
 “install unknown apps” for your file manager):
 
 ```bash
-adb install -r release/PianoStudio-1.0.2-release.apk
+adb install -r release/PianoStudio-1.0.3-release.apk
 ```
 
 If an older debug build is installed, uninstall it first — it uses a different signing key:
@@ -150,7 +167,7 @@ npm run android:release   # web build → cap sync → assembleRelease + bundleR
 
 # verify the signature and checksum
 apksigner verify --print-certs android/app/build/outputs/apk/release/app-release.apk
-sha256sum release/PianoStudio-1.0.2-release.apk
+sha256sum release/PianoStudio-1.0.3-release.apk
 ```
 
 On macOS/Linux, use `./gradlew assembleRelease bundleRelease` instead of the Windows
@@ -166,11 +183,11 @@ npm run android:open      # open the project in Android Studio
 ### Android behaviour
 
 - **Back button**: closes a game → returns to the games page → returns to Studio → exits the app.
-- **Exports** (MusicXML/MIDI/JSON/SVG): opened through the Android share sheet so you can save to
+- **Exports** (PDF/MusicXML/MIDI/JSON/SVG): opened through the Android share sheet so you can save to
   Files, Drive, send by email, etc. Import uses the system file picker.
 - **Audio** starts on the first tap (WebView autoplay rules) and pauses when the app is backgrounded.
   Sheet playback is audible and the output meter reacts, same as the web app.
-- **AI composer** (local and DeepSeek) and the **Listen** button are available in the Android build too.
+- **AI composer** (local) and the separate **DeepSeek** dialog are available in the Android build too.
 - **Online sheet search** (Wikimedia Commons) is bundled in the Android WebView and uses the same
   browser fetch path as the web app for downloads/imports.
 - **Rotation**: portrait is a sheet + keyboard layout; landscape is a compact sheet + full-width
@@ -188,8 +205,11 @@ npm run android:open      # open the project in Android Studio
 | Octave shift | `Z` / `X`, or the − / + buttons |
 | Listen / pause the sheet | `Space`, or the transport `▶ Listen` / `❚❚ Pause` button |
 | Seek | Click a measure in the sheet, click the piano roll, or use the seek slider |
-| AI compose | `✦ AI Compose` in the toolbar or library panel (local or DeepSeek) |
+| AI compose | `✦ AI Compose` in the toolbar or library panel (offline local composer) |
+| DeepSeek | `◇ DeepSeek` in the toolbar or library panel (song arrangement / composer style) |
 | Online search | `⌕ Online` in the toolbar or library panel |
+| Export PDF | `PDF` in the toolbar export group (A4 pages) |
+| Rename sheet | Pencil button on any imported/recorded/AI/online song |
 | Pedal / labels | Buttons above the keyboard |
 | Games | `Games` tab → choose a game |
 
@@ -207,13 +227,15 @@ use the same mapping.
 - MusicXML export writes sharps for black keys and snaps time-signature changes to bar lines.
 - `.mxl` import expects a UTF-8 MusicXML score; `score-timewise` files are rejected with a clear
   message.
-- SVG export renders the notation; MusicXML is the editable/interchange format.
+- SVG export renders the notation; MusicXML is the editable/interchange format. PDF export paginates
+  A4 pages between systems and adds page numbers; measure numbers restart on continuation pages.
 - The **local AI composer** is a rules/pattern generative engine (chord progressions, motif
-  transforms, seeded randomness). The optional **DeepSeek mode** (models `deepseek-flash` /
-  `deepseek-v4-pro`) sends the prompt + a JSON score schema from your browser directly to
+  transforms, seeded randomness). The separate **DeepSeek** dialog (models `deepseek-flash` /
+  `deepseek-v4-pro`) sends a free-form text prompt + JSON score schema from your browser directly to
   `api.deepseek.com` using your API key. Usage is billed by DeepSeek; the key is never sent to a
   Piano Studio server. DeepSeek generation is capped at 16 bars per request and every returned score
-  is validated locally before it is accepted.
+  is validated locally before it is accepted. Song arrangements are generated for personal practice;
+  respect the original song’s copyright.
 - Online search uses the **Wikimedia Commons** API (anonymous CORS, no key). MIDI results are
   downloadable and importable; PDF results open in a new tab. Files keep their Commons licences and
   imports are stored only in this browser. MuseScore/IMSLP links are external searches because those
@@ -224,14 +246,15 @@ use the same mapping.
 ```
 src/
   App.tsx                 app shell, library, transport wiring, import/export UI
-  components/             keyboard, piano roll, transport, AI composer, online search, sound meter
+  components/             keyboard, piano roll, transport, AI/DeepSeek composers, online search
+  export/                 PDF export (jsPDF + svg2pdf, paginated A4)
   hooks/                  piano engine lifecycle, playback scheduler, QWERTY/MIDI input, recorder
   audio/                  Web Audio piano engine + synthesis + offline self-test
   music/                  score model, timing/tempo math, pitch helpers, demo songs, recording
-  music/ai/               local composer, prompt parser, DeepSeek client/validator
+  music/ai/               local composer, prompt parser, DeepSeek free-form client/settings
   music/online/           Wikimedia Commons sheet search + MIDI import
   music/formats/          MIDI + MusicXML parsers/writers, .mxl import, quantization, JSON
-  sheet/                  VexFlow grand-staff renderer, layout, highlighting, SVG export
+  sheet/                  VexFlow grand-staff renderer, layout, highlighting, SVG/PDF pages
   game/                   falling-notes game, ear/key quiz, scoring and quiz logic
   styles.css              theme and layout
 ```
@@ -253,10 +276,16 @@ Playback is a look-ahead scheduler: notes are scheduled into the AudioContext ~0
 - The local AI composer was exercised in headless Chrome: the prompt “epic cinematic in D minor,
   24 bars, 92 bpm, advanced” produced a 300-note two-hand score, added it to the library with an AI
   badge and played it with the meter active — no console errors.
-- **DeepSeek mode** was verified with a mocked chat completion end-to-end (settings → request body
-  with `response_format: json_object` → 64-note score → AI library entry), and the real API was
-  called from the browser with an invalid key: the request is CORS-readable, returns 401, and the UI
-  shows the “API key rejected” message. No real key is stored in the repo.
+- **DeepSeek mode** was verified with mocked chat completions end-to-end in the separate dialog:
+  “Song → piano” sent the arrangement prompt and produced a 56-note score → DeepSeek library entry,
+  and “Composer style” sent “Nocturne in E-flat major” + “Chopin” with no style/key/bar controls. The
+  real API was also called from the browser with an invalid key: the request is CORS-readable,
+  returns 401, and the UI shows the “API key rejected” message. No real key is stored in the repo.
+- **PDF export** was exercised in headless Chrome: a 189-note AI sheet exported as a 2-page A4 PDF
+  (144 KB). Rendering the PDF with PyMuPDF showed 5 complete systems on page 1 and the final system
+  on page 2, with page numbers and no system cut at a page boundary.
+- **Renaming** was exercised end-to-end: the pencil button renamed a generated sheet to “My Renamed
+  Etude”, updated the stage heading and persisted the title in the library.
 - **Online search** was exercised against the live Wikimedia Commons API: “Twinkle, Twinkle, Little
   Star” returned 8 MIDI performances + 9 PDF scans; importing the first MIDI added a 103-note,
   two-hand F-major score to the library with an **Online** badge, and it played with the meter
@@ -272,8 +301,9 @@ Playback is a look-ahead scheduler: notes are scheduled into the AudioContext ~0
   score (78 notes), the share sheet opened with the exported `.musicxml`, hardware Back navigated
   game → games page → Studio → exit, and both portrait and landscape layouts were checked.
 - Signed release builds were verified with `apksigner` (APK Signature Scheme v2, RSA-2048); the
-  1.0.0 build installed cleanly on a fresh Android 14 emulator. **1.0.2** adds the DeepSeek/online
-  search features and is built from this tested web bundle with the same signing key.
+  1.0.0 build installed cleanly on a fresh Android 14 emulator. **1.0.3** adds PDF export,
+  sheet renaming and the separate DeepSeek song/composer dialog, and is built from this tested web
+  bundle with the same signing key.
 
 ## Credits
 

@@ -1,10 +1,10 @@
 /**
- * Optional DeepSeek-backed generation.
+ * DeepSeek-backed piano sheet generation.
  *
- * The key is supplied by the user in the browser (stored only if they choose
- * "remember"), and sent directly to the DeepSeek API — the app has no backend.
- * DeepSeek returns a strict JSON piano score that is validated and converted to
- * the same `Score` model used everywhere else.
+ * This is the free-form mode used by the dedicated DeepSeek dialog: the user
+ * types a song to arrange or a sheet title + composer style, and DeepSeek
+ * returns a strict JSON score that we validate locally. The API key is entered
+ * by the user and sent directly from the browser to api.deepseek.com.
  */
 import type { NoteEvent, Score } from '../types';
 import { createScore } from '../score';
@@ -36,16 +36,13 @@ export interface DeepSeekConfig {
   baseUrl?: string;
 }
 
-export interface DeepSeekComposeRequest {
-  prompt: string;
-  style: AiStyle;
-  mood: AiMood;
-  keyRoot: number;
-  mode: 'major' | 'minor';
-  bars: number;
-  bpm?: number;
-  timeSignature: AiTimeSignature;
-  difficulty: AiDifficulty;
+export interface DeepSeekComposeOptions {
+  style?: AiStyle;
+  mood?: AiMood;
+  difficulty?: AiDifficulty;
+  fallbackTitle?: string;
+  /** Hint passed to the model, not a hard constraint. */
+  bars?: number;
 }
 
 export class DeepSeekError extends Error {
@@ -94,34 +91,9 @@ function beatsPerBar(timeSignature: AiTimeSignature): number {
   return timeSignature === '3/4' ? 3 : timeSignature === '6/8' ? 3 : 4;
 }
 
-function clampBars(bars: number): number {
-  const rounded = Math.round(bars / 4) * 4;
-  return clamp(rounded, 8, 16);
-}
-
-function tempoFor(request: DeepSeekComposeRequest): number {
-  if (request.bpm && Number.isFinite(request.bpm)) return clamp(Math.round(request.bpm), 45, 180);
-  const styleTempo: Record<AiStyle, number> = {
-    classical: 96,
-    romantic: 74,
-    pop: 104,
-    ambient: 64,
-    jazz: 112,
-    waltz: 108,
-  };
-  const moodTempo: Record<AiMood, number> = {
-    happy: 8,
-    calm: -8,
-    melancholic: -6,
-    epic: 4,
-    dreamy: -10,
-  };
-  return clamp(styleTempo[request.style] + moodTempo[request.mood], 45, 180);
-}
-
 function buildSystemPrompt(): string {
   return [
-    'You are Piano Studio, an expert piano composer. Return exactly one JSON object and nothing else.',
+    'You are Piano Studio, an expert piano arranger and composer. Return exactly one JSON object and nothing else.',
     'This is a JSON-only task: never wrap the JSON in markdown and never add commentary.',
     'JSON schema:',
     '{',
@@ -136,32 +108,21 @@ function buildSystemPrompt(): string {
     '  ]',
     '}',
     'Composition rules:',
-    '- Write a musical two-hand piano piece with a clear melody in the right hand and accompaniment in the left hand.',
-    '- Use exactly the requested number of bars; notes start at 0 and stay inside the piece. Beats are quarter-note beats.',
-    '- Left hand MIDI 36..60, right hand MIDI 60..96. Chords may share a start time. Avoid unplayable leaps.',
-    '- Follow the requested key, tempo, meter and difficulty. Use the chord progression implied by the keys and style.',
+    '- Write a playable solo piano piece with a clear right-hand melody and left-hand accompaniment.',
+    '- 8 to 16 bars is ideal. Notes start at beat 0, use quarter-note beats and stay inside the piece.',
+    '- Left hand MIDI 36..60, right hand MIDI 60..96. Chords may share a start time.',
+    '- For an existing song, create a piano arrangement that captures its melody and chord progression as closely as you can; do not output lyrics or prose.',
+    '- For a composer-style request, write an ORIGINAL piece in that composer’s harmonic language, texture and form — never copy an existing composition verbatim.',
     '- Return between 60 and 320 notes, both hands present.',
     '- Note starts and durations should be multiples of 0.25 or 0.5 beats where possible.',
   ].join('\n');
 }
 
-function buildUserPrompt(request: DeepSeekComposeRequest, bars: number, beats: number): string {
-  const styleLabel = AI_STYLES.find((entry) => entry.value === request.style)?.label ?? request.style;
-  const moodLabel = AI_MOODS.find((entry) => entry.value === request.mood)?.label ?? request.mood;
-  const keyName = aiKeyName(request.keyRoot, request.mode);
-  const prompt = request.prompt.trim() || `${moodLabel} ${styleLabel.toLowerCase()} piano piece`;
-  const density =
-    request.difficulty === 'easy'
-      ? 'simple rhythms, mostly quarter/eighth notes, sparse chords'
-      : request.difficulty === 'advanced'
-        ? 'rich texture with arpeggios, 7th chords and faster eighth/sixteenth figures'
-        : 'moderate texture with chord tones and occasional passing notes';
+function buildUserPrompt(prompt: string, bars: number): string {
   return [
-    `Compose a piano piece for this request: "${prompt}".`,
-    `Style: ${styleLabel}. Mood: ${moodLabel}. Key: ${keyName}.`,
-    `Length: ${bars} bars of ${request.timeSignature} (${bars * beats} beats total).`,
-    `Tempo: about ${tempoFor(request)} BPM. Difficulty: ${request.difficulty} — ${density}.`,
-    `Set key.fifths correctly for ${keyName} and timeSignature accordingly.`,
+    prompt.trim(),
+    '',
+    `Produce a two-hand solo piano score of about ${clamp(bars, 8, 16)} bars with the JSON schema above.`,
     'Return the JSON object only.',
   ].join('\n');
 }
@@ -174,7 +135,7 @@ function extractJson(content: string): DeepSeekScoreJson {
   const start = cleaned.indexOf('{');
   const end = cleaned.lastIndexOf('}');
   if (start < 0 || end <= start) {
-    throw new DeepSeekError('DeepSeek did not return a JSON score. Try the local composer or retry.');
+    throw new DeepSeekError('DeepSeek did not return a JSON score. Please retry.');
   }
   let parsed: unknown;
   try {
@@ -188,10 +149,7 @@ function extractJson(content: string): DeepSeekScoreJson {
   return parsed as DeepSeekScoreJson;
 }
 
-function parseKey(
-  value: unknown,
-  request: DeepSeekComposeRequest,
-): { fifths: number; mode: 'major' | 'minor'; name: string } {
+function parseKey(value: unknown): { fifths: number; mode: 'major' | 'minor'; name: string } {
   if (value && typeof value === 'object') {
     const candidate = value as { fifths?: unknown; mode?: unknown };
     const fifths = Number(candidate.fifths);
@@ -211,13 +169,11 @@ function parseKey(
       return { ...signature, name: aiKeyName(((pc % 12) + 12) % 12, mode) };
     }
   }
-  const fallback = aiKeySignature(request.keyRoot, request.mode);
-  return { ...fallback, name: aiKeyName(request.keyRoot, request.mode) };
+  return { fifths: 0, mode: 'major', name: 'C major' };
 }
 
 function parseTimeSignature(
   value: unknown,
-  request: DeepSeekComposeRequest,
 ): { signature: AiTimeSignature; numerator: number; denominator: number } {
   if (value && typeof value === 'object') {
     const candidate = value as { numerator?: unknown; denominator?: unknown };
@@ -233,12 +189,7 @@ function parseTimeSignature(
             : null;
     if (signature) return { signature, numerator, denominator };
   }
-  const signature = request.timeSignature;
-  return {
-    signature,
-    numerator: signature === '3/4' ? 3 : signature === '6/8' ? 6 : 4,
-    denominator: signature === '6/8' ? 8 : 4,
-  };
+  return { signature: '4/4', numerator: 4, denominator: 4 };
 }
 
 function parseNotes(value: unknown): NoteEvent[] {
@@ -267,9 +218,9 @@ function parseNotes(value: unknown): NoteEvent[] {
         : midi < 60
           ? 'left'
           : 'right';
-    const key = `${Math.round(midi)}:${start}:${hand}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
+    const dedupeKey = `${Math.round(midi)}:${start}:${hand}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
     const velocity = Number(candidate.velocity);
     notes.push({
       id: `deepseek-${index}`,
@@ -313,21 +264,24 @@ function endpointFor(baseUrl: string | undefined): string {
 }
 
 /**
- * Generates a piano score via the DeepSeek chat completions API.
- * The returned composition has `meta.provider = 'deepseek'`.
+ * Sends one free-form piano request to DeepSeek and converts the returned JSON
+ * into a playable Score. `prompt` is the complete creative brief.
  */
 export async function composeWithDeepSeek(
-  request: DeepSeekComposeRequest,
+  prompt: string,
   config: DeepSeekConfig,
+  options: DeepSeekComposeOptions = {},
   externalSignal?: AbortSignal,
 ): Promise<AiComposition> {
+  const trimmedPrompt = prompt.trim();
+  if (!trimmedPrompt) {
+    throw new DeepSeekError('Describe the song or composer style first.');
+  }
   const apiKey = config.apiKey.trim();
   if (!apiKey) {
     throw new DeepSeekError('Enter your DeepSeek API key first.');
   }
   const model = config.model?.trim() || DEEPSEEK_DEFAULT_MODEL;
-  const bars = clampBars(request.bars);
-  const beats = beatsPerBar(request.timeSignature);
   const endpoint = endpointFor(config.baseUrl);
 
   const controller = new AbortController();
@@ -347,9 +301,9 @@ export async function composeWithDeepSeek(
         model,
         messages: [
           { role: 'system', content: buildSystemPrompt() },
-          { role: 'user', content: buildUserPrompt(request, bars, beats) },
+          { role: 'user', content: buildUserPrompt(trimmedPrompt, options.bars ?? 16) },
         ],
-        temperature: 0.78,
+        temperature: 0.75,
         max_tokens: 8192,
         response_format: { type: 'json_object' },
         thinking: { type: 'disabled' },
@@ -357,10 +311,10 @@ export async function composeWithDeepSeek(
       }),
       signal: controller.signal,
     });
-  } catch (error) {
+  } catch {
     if (externalSignal?.aborted) throw new DeepSeekError('DeepSeek generation was cancelled.');
     if (controller.signal.aborted) {
-      throw new DeepSeekError('DeepSeek took too long to respond. Try again with fewer bars.');
+      throw new DeepSeekError('DeepSeek took too long to respond. Try again with a simpler request.');
     }
     throw new DeepSeekError(
       `Could not reach DeepSeek at ${endpoint}. Check your connection and base URL.`,
@@ -371,9 +325,8 @@ export async function composeWithDeepSeek(
   }
 
   let payload: DeepSeekChatResponse | null = null;
-  let responseText = '';
   try {
-    responseText = await response.text();
+    const responseText = await response.text();
     payload = responseText ? (JSON.parse(responseText) as DeepSeekChatResponse) : null;
   } catch {
     payload = null;
@@ -386,14 +339,12 @@ export async function composeWithDeepSeek(
   const choice = payload?.choices?.[0];
   if (choice?.finish_reason === 'length') {
     throw new DeepSeekError(
-      'DeepSeek’s score was cut off (token limit). Try 8 bars or a simpler prompt.',
+      'DeepSeek’s score was cut off (token limit). Try a shorter request or use Flash.',
     );
   }
   const content = choice?.message?.content?.trim();
   if (!content) {
-    throw new DeepSeekError(
-      'DeepSeek returned an empty score. This can happen occasionally — retry or use 8 bars.',
-    );
+    throw new DeepSeekError('DeepSeek returned an empty score. This can happen occasionally — retry.');
   }
 
   const parsed = extractJson(content);
@@ -402,22 +353,20 @@ export async function composeWithDeepSeek(
   const right = notes.filter((note) => note.hand === 'right').length;
   if (notes.length < 8 || left < 2 || right < 2) {
     throw new DeepSeekError(
-      'DeepSeek’s JSON did not contain a usable two-hand piano score. Try again or use the local composer.',
+      'DeepSeek’s JSON did not contain a usable two-hand piano score. Try again with a clearer request.',
     );
   }
 
-  const meter = parseTimeSignature(parsed.timeSignature, request);
-  const key = parseKey(parsed.key, request);
+  const meter = parseTimeSignature(parsed.timeSignature);
+  const key = parseKey(parsed.key);
   const tempoCandidate = Number(parsed.tempo);
-  const bpm = Number.isFinite(tempoCandidate)
-    ? clamp(Math.round(tempoCandidate), 45, 180)
-    : tempoFor(request);
+  const bpm = Number.isFinite(tempoCandidate) ? clamp(Math.round(tempoCandidate), 45, 180) : 90;
   const barBeats = beatsPerBar(meter.signature);
   const maxEnd = notes.reduce((end, note) => Math.max(end, note.start + note.duration), 0);
   const modelBars = Number(parsed.bars);
   const barsFromNotes = Math.ceil(maxEnd / barBeats - 1e-6);
   const finalBars = clamp(
-    Number.isFinite(modelBars) && modelBars >= 1 ? Math.round(modelBars) : barsFromNotes,
+    Number.isFinite(modelBars) && modelBars >= 4 ? Math.round(modelBars) : barsFromNotes,
     Math.max(4, barsFromNotes),
     32,
   );
@@ -431,17 +380,18 @@ export async function composeWithDeepSeek(
     .filter((note) => note.duration >= 0.125);
 
   const rawTitle = typeof parsed.title === 'string' ? parsed.title.trim() : '';
-  const title = (rawTitle || `DeepSeek Sketch in ${key.name}`).slice(0, 80);
+  const title = (rawTitle || options.fallbackTitle || `DeepSeek Piece in ${key.name}`).slice(0, 80);
   const composer =
     typeof parsed.composer === 'string' && parsed.composer.trim()
       ? parsed.composer.trim().slice(0, 80)
       : 'DeepSeek AI';
-  const styleLabel = AI_STYLES.find((entry) => entry.value === request.style)?.label ?? request.style;
-  const moodLabel = AI_MOODS.find((entry) => entry.value === request.mood)?.label ?? request.mood;
-  const promptSummary = request.prompt.trim().slice(0, 140);
-  const description = `${moodLabel} ${styleLabel.toLowerCase()} in ${key.name}, ${finalBars} bars at ${bpm} BPM. Generated with DeepSeek (${model})${
-    promptSummary ? ` from “${promptSummary}”` : ''
-  }.`;
+  const style = options.style ?? 'classical';
+  const mood = options.mood ?? 'dreamy';
+  const difficulty = options.difficulty ?? 'medium';
+  const styleLabel = AI_STYLES.find((entry) => entry.value === style)?.label ?? style;
+  const moodLabel = AI_MOODS.find((entry) => entry.value === mood)?.label ?? mood;
+  const promptSummary = trimmedPrompt.replace(/\s+/g, ' ').slice(0, 140);
+  const description = `${moodLabel} ${styleLabel.toLowerCase()} in ${key.name}, ${finalBars} bars at ${bpm} BPM. Generated with DeepSeek (${model}) from “${promptSummary}”.`;
 
   const score: Score = createScore({
     title,
@@ -461,13 +411,13 @@ export async function composeWithDeepSeek(
     meta: {
       title,
       description,
-      style: request.style,
-      mood: request.mood,
+      style,
+      mood,
       keyName: key.name,
       bars: finalBars,
       bpm,
       timeSignature: meter.signature,
-      difficulty: request.difficulty,
+      difficulty,
       seed: 0,
       provider: 'deepseek',
       model,

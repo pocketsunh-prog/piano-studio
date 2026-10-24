@@ -1,7 +1,7 @@
 {
   "name": "piano-studio",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.3",
   "type": "module",
   "description": "Piano Studio - play, import/export sheet music, and practice with games",
   "scripts": {
@@ -25,8 +25,10 @@
     "@capacitor/splash-screen": "^8.0.2",
     "@capacitor/status-bar": "^8.0.4",
     "fflate": "^0.8.2",
+    "jspdf": "^4.2.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "svg2pdf.js": "^2.8.1",
     "vexflow": "4.2.5"
   },
   "devDependencies": {
@@ -45,4 +47,3 @@
     "sharp@0.32.6": true
   }
 }
-

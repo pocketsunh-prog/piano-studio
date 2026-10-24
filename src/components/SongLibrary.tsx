@@ -1,7 +1,8 @@
+import { useState } from 'react';
 import type { Score } from '../music/types';
 import { scoreDurationSeconds } from '../music/timing';
 
-export type SongKind = 'demo' | 'imported' | 'recording' | 'ai' | 'online';
+export type SongKind = 'demo' | 'imported' | 'recording' | 'ai' | 'deepseek' | 'online';
 
 export interface SongEntry {
   score: Score;
@@ -15,7 +16,9 @@ export interface SongLibraryProps {
   onSelect: (id: string) => void;
   onImport: () => void;
   onRemove: (id: string) => void;
+  onRename: (id: string, title: string) => void;
   onAiCompose: () => void;
+  onDeepSeek: () => void;
   onOnlineSearch: () => void;
 }
 
@@ -31,6 +34,7 @@ const KIND_LABEL: Record<SongKind, string> = {
   imported: 'Imported',
   recording: 'Recording',
   ai: 'AI',
+  deepseek: 'DeepSeek',
   online: 'Online',
 };
 
@@ -41,9 +45,26 @@ export function SongLibrary({
   onSelect,
   onImport,
   onRemove,
+  onRename,
   onAiCompose,
+  onDeepSeek,
   onOnlineSearch,
 }: SongLibraryProps) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+
+  const startRename = (score: Score) => {
+    setEditingId(score.id);
+    setEditValue(score.title);
+  };
+
+  const commitRename = () => {
+    if (!editingId) return;
+    const title = editValue.trim();
+    if (title) onRename(editingId, title);
+    setEditingId(null);
+  };
+
   return (
     <div className="library">
       <div className="panel-heading">
@@ -61,10 +82,46 @@ export function SongLibrary({
           <span aria-hidden="true">⌕</span> Online
         </button>
       </div>
+      <button type="button" className="btn deepseek-button" onClick={onDeepSeek}>
+        <span aria-hidden="true">◇</span> DeepSeek AI
+      </button>
 
       <ul className="song-list">
         {songs.map(({ score, kind }) => {
           const active = score.id === currentId;
+          if (editingId === score.id) {
+            return (
+              <li key={score.id}>
+                <form
+                  className="song-rename-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    commitRename();
+                  }}
+                >
+                  <input
+                    value={editValue}
+                    onChange={(event) => setEditValue(event.target.value)}
+                    aria-label={`Rename ${score.title}`}
+                    autoFocus
+                    maxLength={120}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Escape') {
+                        event.preventDefault();
+                        setEditingId(null);
+                      }
+                    }}
+                  />
+                  <button type="submit" className="primary" disabled={!editValue.trim()}>
+                    Save
+                  </button>
+                  <button type="button" className="ghost" onClick={() => setEditingId(null)}>
+                    Cancel
+                  </button>
+                </form>
+              </li>
+            );
+          }
           return (
             <li key={score.id}>
               <div className={`song-item ${active ? 'active' : ''}`}>
@@ -76,15 +133,26 @@ export function SongLibrary({
                   <span className={`song-kind ${kind}`}>{KIND_LABEL[kind]}</span>
                 </button>
                 {kind !== 'demo' && (
-                  <button
-                    type="button"
-                    className="song-remove"
-                    onClick={() => onRemove(score.id)}
-                    aria-label={`Remove ${score.title}`}
-                    title="Remove from library"
-                  >
-                    ×
-                  </button>
+                  <div className="song-row-actions">
+                    <button
+                      type="button"
+                      className="song-rename"
+                      onClick={() => startRename(score)}
+                      aria-label={`Rename ${score.title}`}
+                      title="Rename sheet"
+                    >
+                      ✎
+                    </button>
+                    <button
+                      type="button"
+                      className="song-remove"
+                      onClick={() => onRemove(score.id)}
+                      aria-label={`Remove ${score.title}`}
+                      title="Remove from library"
+                    >
+                      ×
+                    </button>
+                  </div>
                 )}
               </div>
             </li>

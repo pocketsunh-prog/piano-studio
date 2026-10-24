@@ -465,4 +465,140 @@ export function renderScoreSvg(score: Score, options: { width?: number } = {}): 
   return svg.outerHTML;
 }
 
+export interface ScoreSvgPages {
+  /** One standalone SVG per A4 page. */
+  pages: string[];
+  /** Page width in SVG px. */
+  width: number;
+  /** Content height of each page (varies with the systems it holds). */
+  pageHeights: number[];
+  /** Number of systems on each page (useful for tests). */
+  systemsPerPage: number[];
+}
+
+/**
+ * Renders a score as paginated standalone SVG pages (A4 aspect ratio by
+ * default). Pages break only between systems, and their viewBox ends at the
+ * last system, so no staff is ever cut or repeated on the next page.
+ */
+export function renderScorePagesSvg(
+  score: Score,
+  options: { width?: number; pageHeight?: number } = {},
+): ScoreSvgPages {
+  if (typeof document === 'undefined') {
+    throw new Error('renderScorePagesSvg requires a browser DOM');
+  }
+  const width = Math.min(2000, Math.max(320, Math.round(options.width ?? 794)));
+  const pageHeight = Math.max(400, Math.round(options.pageHeight ?? width * 1.4142));
+  const title = (score?.title ?? '').trim();
+  const subtitle = (score?.composer ?? '').trim();
+  const host = document.createElement('div');
+  const result = renderScoreInto(host, score, {
+    width,
+    maxMeasures: 400,
+    theme: 'export',
+    topOffset: title || subtitle ? 64 : 16,
+    title,
+    subtitle,
+  });
+  const svg = result.svg;
+  if (!svg) throw new Error('Unable to render this score to SVG');
+
+  svg.setAttribute('xmlns', SVG_NS);
+  svg.setAttribute('width', String(result.layout.width));
+  svg.setAttribute('height', String(result.layout.height));
+
+  const background = document.createElementNS(SVG_NS, 'rect');
+  background.setAttribute('x', '0');
+  background.setAttribute('y', '0');
+  background.setAttribute('width', String(result.layout.width));
+  background.setAttribute('height', String(result.layout.height));
+  background.setAttribute('fill', '#ffffff');
+  svg.insertBefore(background, svg.firstChild);
+
+  // Break pages between systems so staves are never cut in half.
+  const groups: Array<Array<{ index: number; top: number; height: number; startBeat: number; endBeat: number }>> = [];
+  let current: Array<{ index: number; top: number; height: number; startBeat: number; endBeat: number }> = [];
+  let pageStart = 0;
+  for (const system of result.layout.systems) {
+    const bottom = system.top + system.height;
+    if (current.length && bottom - pageStart > pageHeight) {
+      groups.push(current);
+      current = [];
+      pageStart = system.top;
+    }
+    current.push({
+      index: system.index,
+      top: system.top,
+      height: system.height,
+      startBeat: system.startBeat,
+      endBeat: system.endBeat,
+    });
+  }
+  if (current.length) groups.push(current);
+
+  const shiftTimed = <T extends { beat: number }>(events: readonly T[], start: number): T[] => {
+    const atStart = events.filter((event) => event.beat <= start).at(-1);
+    const later = events
+      .filter((event) => event.beat > start)
+      .map((event) => ({ ...event, beat: event.beat - start }));
+    return atStart ? [{ ...atStart, beat: 0 }, ...later] : later;
+  };
+
+  const pageHeights: number[] = [];
+  const pages = groups.map((group, pageIndex) => {
+    const startBeat = group[0].startBeat;
+    const endBeat = group[group.length - 1].endBeat;
+    const pageScore: Score = {
+      ...score,
+      title: pageIndex === 0 ? score.title : '',
+      composer: pageIndex === 0 ? score.composer : '',
+      notes: score.notes
+        .filter((note) => note.start >= startBeat && note.start < endBeat)
+        .map((note) => ({
+          ...note,
+          start: note.start - startBeat,
+          duration: Math.min(note.duration, endBeat - note.start),
+        })),
+      tempo: shiftTimed(score.tempo, startBeat),
+      timeSignatures: shiftTimed(score.timeSignatures, startBeat),
+      lengthBeats: endBeat - startBeat,
+    };
+    const title = pageScore.title;
+    const subtitle = pageScore.composer;
+    const pageHost = document.createElement('div');
+    const pageResult = renderScoreInto(pageHost, pageScore, {
+      width,
+      maxMeasures: 400,
+      theme: 'export',
+      topOffset: title || subtitle ? 64 : 16,
+      title,
+      subtitle,
+    });
+    const pageSvg = pageResult.svg;
+    if (!pageSvg) throw new Error('Unable to render a PDF page.');
+    pageSvg.setAttribute('xmlns', SVG_NS);
+    pageSvg.setAttribute('width', String(pageResult.layout.width));
+    pageSvg.setAttribute('height', String(pageResult.layout.height));
+
+    const pageBackground = document.createElementNS(SVG_NS, 'rect');
+    pageBackground.setAttribute('x', '0');
+    pageBackground.setAttribute('y', '0');
+    pageBackground.setAttribute('width', String(pageResult.layout.width));
+    pageBackground.setAttribute('height', String(pageResult.layout.height));
+    pageBackground.setAttribute('fill', '#ffffff');
+    pageSvg.insertBefore(pageBackground, pageSvg.firstChild);
+
+    pageHeights.push(pageResult.layout.height);
+    return pageSvg.outerHTML;
+  });
+
+  return {
+    pages,
+    width,
+    pageHeights,
+    systemsPerPage: groups.map((group) => group.length),
+  };
+}
+
 export { LEFT_MARGIN, RIGHT_MARGIN };
