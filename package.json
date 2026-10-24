@@ -1,0 +1,33 @@
+{
+  "name": "piano-studio",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Piano Studio - play, import/export sheet music, and practice with games",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "fflate": "^0.8.2",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "vexflow": "4.2.5"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "jsdom": "^26.1.0",
+    "typescript": "~5.9.0",
+    "vite": "^7.1.0",
+    "vitest": "^3.2.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  }
+}
