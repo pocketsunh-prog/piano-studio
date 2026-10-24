@@ -269,6 +269,8 @@ export interface MasterChain {
   readonly input: GainNode;
   /** Dry-only input for the metronome click. */
   readonly dryInput: GainNode;
+  /** Pass-through analyser on the final output (null when unsupported, e.g. in mocks). */
+  readonly analyser: AnalyserNode | null;
   setVolume(value: number): void;
   setReverbMix(value: number): void;
   dispose(): void;
@@ -335,7 +337,21 @@ export function createMasterChain(ctx: BaseAudioContext, options: MasterChainOpt
   wet.connect(compressor);
   compressor.connect(limiter);
   limiter.connect(master);
-  master.connect(ctx.destination);
+
+  // Insert a pass-through analyser on the master output so the UI can show a
+  // live level meter. Environments without AnalyserNode (test mocks) fall back
+  // to a direct connection.
+  let analyser: AnalyserNode | null = null;
+  try {
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.55;
+    master.connect(analyser);
+    analyser.connect(ctx.destination);
+  } catch {
+    analyser = null;
+    master.connect(ctx.destination);
+  }
 
   const nodes: AudioNode[] = [
     input,
@@ -348,6 +364,7 @@ export function createMasterChain(ctx: BaseAudioContext, options: MasterChainOpt
     limiter,
     master,
   ];
+  if (analyser) nodes.push(analyser);
 
   let currentVolume = volume;
   let currentReverbMix = reverbMix;
@@ -355,6 +372,7 @@ export function createMasterChain(ctx: BaseAudioContext, options: MasterChainOpt
   return {
     input,
     dryInput,
+    analyser,
     setVolume(value: number): void {
       currentVolume = clamp01(Number.isFinite(value) ? value : currentVolume);
       master.gain.setTargetAtTime(currentVolume, ctx.currentTime, 0.02);

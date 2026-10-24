@@ -95,6 +95,7 @@ export class PianoEngine {
   private readonly voices = new Set<VoiceRecord>();
   private readonly held = new Map<number, Set<VoiceRecord>>();
   private readonly sustained = new Set<VoiceRecord>();
+  private levelBuffer: Float32Array<ArrayBuffer> | null = null;
 
   constructor(options: PianoEngineOptions = {}) {
     this.volume = clamp01(finiteOr(options.volume, DEFAULT_VOLUME));
@@ -129,6 +130,31 @@ export class PianoEngine {
     const ctx = this.liveContext();
     if (ctx) this.pruneSilent(ctx.currentTime);
     return this.voices.size;
+  }
+
+  /**
+   * Current master-output level (0..1, UI-friendly scaling) for a sound meter.
+   * Returns 0 when the context is not running or analyser data is unavailable.
+   */
+  getOutputLevel(): number {
+    try {
+      const ctx = this.ctx;
+      const analyser = this.chain?.analyser;
+      if (!ctx || ctx.state !== 'running' || !analyser) return 0;
+      if (!this.levelBuffer || this.levelBuffer.length !== analyser.fftSize) {
+        this.levelBuffer = new Float32Array(analyser.fftSize);
+      }
+      analyser.getFloatTimeDomainData(this.levelBuffer);
+      let sumSquares = 0;
+      for (let i = 0; i < this.levelBuffer.length; i += 1) {
+        const sample = this.levelBuffer[i];
+        sumSquares += sample * sample;
+      }
+      const rms = Math.sqrt(sumSquares / this.levelBuffer.length);
+      return Math.min(1, rms * 5.5);
+    } catch {
+      return 0;
+    }
   }
 
   /**
@@ -406,6 +432,8 @@ export class PianoEngine {
       if (!this.stealVoice(ctx.currentTime)) break;
     }
     if (!this.noiseBuffer) return null;
+    const chain = this.chain;
+    if (!chain) return null;
 
     let record: VoiceRecord | null = null;
     const handle = createPianoVoice(
@@ -422,6 +450,9 @@ export class PianoEngine {
         if (record) this.cleanupRecord(record);
       },
     );
+    // Route the voice into the master bus. Without this the synth runs but is
+    // inaudible (no path to the AudioContext destination).
+    handle.output.connect(chain.input);
     record = {
       midi: handle.midi,
       kind,

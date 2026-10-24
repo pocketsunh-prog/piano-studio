@@ -9,6 +9,8 @@ import { PianoRoll } from './components/PianoRoll';
 import { Transport } from './components/Transport';
 import { SongLibrary, type SongEntry, type SongKind } from './components/SongLibrary';
 import { GamesPage, type GameKind } from './components/GamesPage';
+import { AiComposer } from './components/AiComposer';
+import { SoundMeter } from './components/SoundMeter';
 import { DEMO_SONGS } from './music/demo';
 import {
   beatToSeconds,
@@ -22,6 +24,7 @@ import { MAX_OCTAVE, MIN_OCTAVE } from './music/keymap';
 import { parseScoreFile } from './music/formats/import';
 import { buildExport, scoreFromJson, type ExportFormat } from './music/formats/export';
 import type { Score } from './music/types';
+import type { AiComposition } from './music/ai/composer';
 import { saveBlob } from './platform/saveBlob';
 import {
   isNativeApp,
@@ -68,7 +71,12 @@ function loadLibrary(): SongEntry[] {
       const candidate = item as { score?: Partial<Score>; kind?: SongKind } | null;
       const score = candidate?.score;
       if (!score || !Array.isArray(score.notes) || typeof score.title !== 'string') continue;
-      const kind: SongKind = candidate?.kind === 'recording' ? 'recording' : 'imported';
+      const kind: SongKind =
+        candidate?.kind === 'recording'
+          ? 'recording'
+          : candidate?.kind === 'ai'
+            ? 'ai'
+            : 'imported';
       stored.push({
         kind,
         score: {
@@ -156,6 +164,7 @@ export default function App() {
   const [liveNotes, setLiveNotes] = useState<ReadonlySet<number>>(() => new Set());
   const [importing, setImporting] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
 
   const playback = usePlayback({ score, engine, tempoScale, loop, metronome });
 
@@ -222,7 +231,7 @@ export default function App() {
   }, [playback]);
 
   useQwertyInput({
-    enabled: tab === 'studio',
+    enabled: tab === 'studio' && !aiOpen,
     octave,
     onNoteOn: handleNoteOn,
     onNoteOff: handleNoteOff,
@@ -371,6 +380,27 @@ export default function App() {
     [songs, currentId],
   );
 
+  const openAiComposer = useCallback(() => {
+    playback.pause();
+    setAiOpen(true);
+  }, [playback]);
+
+  const handleAiCreate = useCallback(
+    (composition: AiComposition) => {
+      const entry: SongEntry = { score: composition.score, kind: 'ai' };
+      setSongs((prev) => [...prev, entry]);
+      setCurrentId(entry.score.id);
+      setAiOpen(false);
+      setViewMode('sheet');
+      setTab('studio');
+      showToast(
+        `AI sheet “${composition.meta.title}” added — press Listen to hear it.`,
+        'success',
+      );
+    },
+    [showToast],
+  );
+
   const selectTab = useCallback(
     (next: Tab) => {
       if (next === tab) return;
@@ -493,6 +523,7 @@ export default function App() {
             title="Browsers need one click before audio can play"
           >
             <span className={`status-dot ${ready ? 'on' : ''}`} />
+            <SoundMeter engine={engine} />
             {ready ? 'Sound on' : 'Enable sound'}
           </button>
           <label className="volume-control" title="Master volume">
@@ -540,6 +571,7 @@ export default function App() {
                 onSelect={setCurrentId}
                 onImport={handleImportClick}
                 onRemove={handleRemoveSong}
+                onAiCompose={openAiComposer}
               />
             </aside>
 
@@ -559,6 +591,14 @@ export default function App() {
                   </div>
                 </div>
                 <div className="stage-actions">
+                  <button
+                    type="button"
+                    className="ai-cta"
+                    onClick={openAiComposer}
+                    title="Generate a new piano sheet with the local AI composer"
+                  >
+                    ✦ AI Compose
+                  </button>
                   <div className="segmented" role="group" aria-label="Score view">
                     <button
                       type="button"
@@ -735,6 +775,10 @@ export default function App() {
         <div className={`toast ${toast.kind}`} role="status">
           {toast.message}
         </div>
+      )}
+
+      {aiOpen && (
+        <AiComposer onClose={() => setAiOpen(false)} onCreate={handleAiCreate} />
       )}
     </div>
   );

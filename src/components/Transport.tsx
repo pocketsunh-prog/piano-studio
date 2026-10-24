@@ -58,9 +58,10 @@ export function Transport({
             className="play-button primary"
             onClick={onPlayPause}
             disabled={disabled}
-            aria-label={isPlaying ? 'Pause' : 'Play'}
+            aria-label={isPlaying ? 'Pause sheet playback' : 'Listen to the sheet'}
+            title={isPlaying ? 'Pause playback' : 'Listen to the sheet with piano sound'}
           >
-            {isPlaying ? '❚❚' : '▶'}
+            {isPlaying ? '❚❚ Pause' : '▶ Listen'}
           </button>
           <button type="button" className="stop-button" onClick={onStop} aria-label="Stop">
             ■

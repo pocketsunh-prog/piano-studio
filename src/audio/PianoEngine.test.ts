@@ -141,6 +141,12 @@ describe('PianoEngine — scheduling', () => {
     expect(ctx.gains.length).toBeGreaterThan(gainsBefore);
     expect(ctx.bufferSources.length).toBe(sourcesBefore + 1); // hammer noise
     expect(piano.activeVoiceCount).toBe(1);
+
+    // Regression: the voice output must reach the master bus, otherwise the
+    // synth builds correctly but the app is silent.
+    const chainInput = (piano as unknown as { chain?: { input?: MockNode } }).chain?.input;
+    expect(chainInput).toBeDefined();
+    expect(ctx.nodes.some((node) => node.connections.includes(chainInput as MockNode))).toBe(true);
   });
 
   it('scheduleNote() clamps past times and drops notes that already finished', async () => {
