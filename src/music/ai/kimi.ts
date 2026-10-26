@@ -15,18 +15,35 @@ import {
 
 export { DeepSeekError };
 
-export const KIMI_DEFAULT_BASE_URL = 'https://api.moonshot.ai/v1';
+export const KIMI_DEFAULT_BASE_URL = 'https://api.moonshot.cn/v1';
 
 export const KIMI_MODELS: ReadonlyArray<{ value: string; label: string }> = [
-  { value: 'kimi-k3.1-pro', label: 'Kimi K3.1 Pro — best arrangements' },
+  { value: 'kimi-k3', label: 'Kimi K3 — recommended' },
   { value: 'kimi-k3.1-pro-highspeed', label: 'Kimi K3.1 Pro Highspeed — faster' },
-  { value: 'kimi-k3', label: 'Kimi K3 — previous flagship' },
+  { value: 'kimi-k3.1-pro', label: 'Kimi K3.1 Pro — maximum detail (slower)' },
+  { value: 'kimi-k2.6', label: 'Kimi K2.6 — legacy' },
 ];
 
-export const KIMI_DEFAULT_MODEL = 'kimi-k3.1-pro';
+export const KIMI_DEFAULT_MODEL = 'kimi-k3';
 
 export type KimiConfig = DeepSeekConfig;
 export type KimiComposeOptions = DeepSeekComposeOptions;
+
+/**
+ * Kimi's Anthropic-compatible `/anthropic/v1/messages` endpoint is not
+ * browser-CORS-enabled. If that URL is pasted, use the equivalent
+ * OpenAI-compatible `/v1` base so browser generation still works.
+ */
+export function normalizeKimiBaseUrl(baseUrl: string | undefined): string {
+  const trimmed = baseUrl?.trim();
+  if (!trimmed) return KIMI_DEFAULT_BASE_URL;
+  const base = trimmed.replace(/\/+$/, '');
+  if (base.includes('/anthropic/')) {
+    const origin = /^(https?:\/\/[^/]+)/.exec(base)?.[1];
+    if (origin) return `${origin}/v1`;
+  }
+  return base;
+}
 
 export async function composeWithKimi(
   prompt: string,
@@ -36,7 +53,11 @@ export async function composeWithKimi(
 ): Promise<Awaited<ReturnType<typeof composeWithDeepSeek>>> {
   return composeWithDeepSeek(
     prompt,
-    { ...config, baseUrl: config.baseUrl?.trim() || KIMI_DEFAULT_BASE_URL },
+    {
+      ...config,
+      model: config.model?.trim() || KIMI_DEFAULT_MODEL,
+      baseUrl: normalizeKimiBaseUrl(config.baseUrl),
+    },
     options,
     externalSignal,
     'kimi',
@@ -44,8 +65,7 @@ export async function composeWithKimi(
 }
 
 function searchEndpointFor(baseUrl: string | undefined): string {
-  let base = (baseUrl?.trim() || KIMI_DEFAULT_BASE_URL).replace(/\/+$/, '');
-  base = base.replace(/\/chat\/completions$/, '');
+  const base = normalizeKimiBaseUrl(baseUrl).replace(/\/+$/, '');
   if (base.endsWith('/v1')) return `${base}/tools/search`;
   return `${base}/v1/tools/search`;
 }

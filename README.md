@@ -70,12 +70,14 @@ sheets online**, and practice with two games. It also ships as a native **Androi
   - **Composer style**: type a sheet title and composer; Kimi writes an original piece using the
     built-in style briefs (Chopin, Bach, Mozart, Beethoven, Debussy, Satie, Liszt, Rachmaninoff,
     Brahms, Tchaikovsky, Joplin, Einaudi, Hisaishi, Yiruma and more).
-- **Kimi K3.1 Pro** is the default; **K3.1 Pro Highspeed** and **Kimi K3** are selectable. Kimi’s
-  Chat Completions endpoint supports browser CORS, so the key and prompt go directly to
-  `api.moonshot.ai`; usage is billed to your Kimi account.
+- **Kimi K3** is the default and works with standard API keys; **K3.1 Pro**, **K3.1 Pro Highspeed**
+  and **K2.6** are selectable (K3.1 may require higher account tier/rate limits). Browser requests
+  use Kimi’s OpenAI-compatible `https://api.moonshot.cn/v1` endpoint; if the Anthropic-compatible
+  `/anthropic/v1/messages` URL is pasted into Advanced settings it is normalized to `/v1` because
+  that endpoint is not browser-CORS-enabled. Usage is billed to your Kimi account.
 - Kimi’s standalone Search API is **not browser-CORS-enabled**, so the Kimi dialog does not offer
-  web lookup. Use the optional melody/chords box for a closer arrangement. Kimi K3.1 always reasons;
-  requests are capped at 16 bars and every returned score is validated locally.
+  web lookup. Use the optional melody/chords box for a closer arrangement. Kimi models reason during
+  generation; requests are capped at 16 bars and every returned score is validated locally.
 - Opened sheets get a purple **Kimi** badge. As with DeepSeek, a song title alone is not a guaranteed
   exact transcription — import a MIDI for exact notes.
 
@@ -158,8 +160,8 @@ Signed release artifacts are included in `release/` (gitignored build output):
 Package      com.pianostudio.app
 Version      1.1.0 (versionCode 6)
 Min SDK      24 (Android 7.0+), target SDK 36
-APK SHA-256  9575c5ff204d73debb82b5bc6281798223538493795ca044bc5ff159f4d0e13a
-AAB SHA-256  dca713df8be91324f78fb3e85f7221b4c639813267d1e6cfc9fb40fefc3cb728
+APK SHA-256  6e3b8d7a6bedbe719296a53b479a45a4ee4b5dbe100d6708d180151ba9c366c1
+AAB SHA-256  247292bb2a8f2248cf39ab137c026bec9a1b2e4798b7b56f791792393323ec14
 Cert SHA-256 8D:39:AE:54:D9:F8:40:71:B8:3F:0A:6E:B7:9C:56:1C:10:19:F1:A0:8A:9D:FB:93:BF:83:61:AC:7B:12:7A:EA
 ```
 
@@ -270,11 +272,13 @@ use the same mapping.
   Reference lookup improves matching but cannot guarantee an exact transcription of a copyrighted
   song; for exact notes, import a MIDI. Song arrangements are for personal practice; respect the
   original song’s copyright.
-- The **Kimi** dialog uses Kimi K3.1 Pro/Highspeed/K3 via `api.moonshot.ai` (Chat Completions CORS
-  verified). Kimi’s standalone Search API is not browser-CORS-enabled, so the Kimi dialog offers no
-  web lookup; use the optional pasted melody/chords. Kimi K3.1 always reasons, usage is billed to
-  your Kimi account, requests are capped at 16 bars, and returned scores are validated locally.
-  Kimi sheets get a **Kimi** badge.
+- The **Kimi** dialog uses Kimi K3 (default) or K3.1 Pro/Highspeed/K2.6 via the OpenAI-compatible
+  `api.moonshot.cn/v1` endpoint (Chat CORS verified). The Anthropic-compatible
+  `/anthropic/v1/messages` URL is normalized to `/v1` when pasted because it is not
+  browser-CORS-enabled. Kimi’s standalone Search API is also blocked in the browser, so the dialog
+  offers no web lookup; use the optional pasted melody/chords. Kimi models reason during generation,
+  usage is billed to your Kimi account, requests are capped at 16 bars, and returned scores are
+  validated locally. Kimi sheets get a **Kimi** badge.
 - Online search uses the **Wikimedia Commons** API (anonymous CORS, no key). MIDI results are
   downloadable and importable; PDF results open in a new tab. Files keep their Commons licences and
   imports are stored only in this browser. MuseScore/IMSLP links are external searches because those
@@ -304,7 +308,7 @@ Playback is a look-ahead scheduler: notes are scheduled into the AudioContext ~0
 
 ## Verification
 
-- **211 unit tests across 21 files** cover timing/tempo math, pitch/key signatures, score
+- **212 unit tests across 21 files** cover timing/tempo math, pitch/key signatures, score
   normalisation, recording quantization, MIDI/MusicXML round-trips, `.mxl` import, VexFlow layout
   helpers, audio voice/engine behaviour, AI composition/prompt parsing, DeepSeek/Kimi response
   validation and request shapes, DeepSeek Search references/style guides, online Commons
@@ -323,12 +327,12 @@ Playback is a look-ahead scheduler: notes are scheduled into the AudioContext ~0
   without an unnecessary search. The real Chat and Search endpoints were also called from the
   browser with an invalid key: both are CORS-readable, return 401, and the UI shows the “API key
   rejected” message. No real key is stored in the repo.
-- **Kimi mode** was verified in headless Chrome with mocked Kimi Chat completions: the dialog used
-  `api.moonshot.ai/v1/chat/completions`, `kimi-k3.1-pro`, JSON mode, `max_completion_tokens` and no
-  temperature/thinking fields, passed the pasted melody into the prompt, and produced a Kimi-badged
-  score. Kimi’s Chat endpoint is browser-CORS-readable (401 verified); its standalone Search
-  preflight is blocked, so the Kimi UI intentionally uses the manual melody/chords reference box
-  instead.
+- **Kimi mode** was verified with mocked Kimi Chat completions (request shape, JSON mode,
+  `max_completion_tokens`, manual reference) and then with a **live Kimi K3 call** against
+  `api.moonshot.cn/v1`: “Twinkle Twinkle Little Star” produced a 16-bar, 101-note two-hand Kimi sheet
+  with the Kimi badge. K3.1 Pro/Highspeed returned 429 on the test account, which is why K3 is the
+  default. The Anthropic `/anthropic/v1/messages` browser preflight is blocked, so the UI normalizes
+  that URL to `/v1` and does not offer Kimi Search. No API key is stored in the repo.
 - **PDF export** was exercised in headless Chrome with a deliberately dense, chromatic 336-note score:
   the adaptive layout switched to one measure per system and produced 5 readable A4 pages with no
   notes cut at system/page boundaries. A normal 189-note sheet exported as a 2-page PDF. Rendering

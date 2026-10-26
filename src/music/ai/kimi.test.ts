@@ -4,6 +4,7 @@ import {
   KIMI_DEFAULT_MODEL,
   DeepSeekError,
   composeWithKimi,
+  normalizeKimiBaseUrl,
   searchKimiReferences,
 } from './kimi';
 
@@ -73,13 +74,23 @@ describe('composeWithKimi', () => {
     expect(result.score.notes.length).toBeGreaterThan(20);
   });
 
-  it('defaults to Kimi K3.1 Pro', async () => {
+  it('defaults to Kimi K3', async () => {
     const fetchMock = mockChat(JSON.stringify(makeScoreJson()));
     const result = await composeWithKimi('Compose something.', { apiKey: 'sk-kimi-test' });
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     const body = JSON.parse(init.body as string) as { model: string };
     expect(body.model).toBe(KIMI_DEFAULT_MODEL);
     expect(result.meta.model).toBe(KIMI_DEFAULT_MODEL);
+  });
+
+  it('normalizes an Anthropic Messages URL to the browser-safe OpenAI endpoint', () => {
+    expect(normalizeKimiBaseUrl('https://api.moonshot.cn/anthropic/v1/messages')).toBe(
+      'https://api.moonshot.cn/v1',
+    );
+    expect(normalizeKimiBaseUrl('https://api.moonshot.ai/v1')).toBe(
+      'https://api.moonshot.ai/v1',
+    );
+    expect(normalizeKimiBaseUrl(undefined)).toBe(KIMI_DEFAULT_BASE_URL);
   });
 
   it('maps Kimi API errors', async () => {

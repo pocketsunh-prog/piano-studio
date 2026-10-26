@@ -507,7 +507,10 @@ export async function composeWithDeepSeek(
   const endpoint = endpointFor(config.baseUrl);
 
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 180_000);
+  const timeout = window.setTimeout(
+    () => controller.abort(),
+    provider === 'kimi' ? 360_000 : 180_000,
+  );
   const onExternalAbort = () => controller.abort();
   externalSignal?.addEventListener('abort', onExternalAbort);
 
@@ -525,7 +528,7 @@ export async function composeWithDeepSeek(
           messages,
           response_format: { type: 'json_object' },
           max_completion_tokens: 32768,
-          ...(model.startsWith('kimi-k3.1') ? { reasoning_effort: 'low' } : {}),
+          ...(model.startsWith('kimi-k3') ? { reasoning_effort: 'low' } : {}),
           stream: false,
         }
       : {
