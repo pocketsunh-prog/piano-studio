@@ -10,7 +10,7 @@ import { Transport } from './components/Transport';
 import { SongLibrary, type SongEntry, type SongKind } from './components/SongLibrary';
 import { GamesPage, type GameKind } from './components/GamesPage';
 import { AiComposer } from './components/AiComposer';
-import { DeepSeekComposer } from './components/DeepSeekComposer';
+import { CloudComposer } from './components/CloudComposer';
 import { OnlineSheets } from './components/OnlineSheets';
 import { SoundMeter } from './components/SoundMeter';
 import { DEMO_SONGS } from './music/demo';
@@ -81,9 +81,11 @@ function loadLibrary(): SongEntry[] {
             ? 'ai'
             : candidate?.kind === 'deepseek'
               ? 'deepseek'
-              : candidate?.kind === 'online'
-                ? 'online'
-                : 'imported';
+              : candidate?.kind === 'kimi'
+                ? 'kimi'
+                : candidate?.kind === 'online'
+                  ? 'online'
+                  : 'imported';
       stored.push({
         kind,
         score: {
@@ -173,6 +175,7 @@ export default function App() {
   const [dragging, setDragging] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [deepseekOpen, setDeepseekOpen] = useState(false);
+  const [kimiOpen, setKimiOpen] = useState(false);
   const [onlineOpen, setOnlineOpen] = useState(false);
 
   const playback = usePlayback({ score, engine, tempoScale, loop, metronome });
@@ -240,7 +243,7 @@ export default function App() {
   }, [playback]);
 
   useQwertyInput({
-    enabled: tab === 'studio' && !aiOpen && !deepseekOpen && !onlineOpen,
+    enabled: tab === 'studio' && !aiOpen && !deepseekOpen && !kimiOpen && !onlineOpen,
     octave,
     onNoteOn: handleNoteOn,
     onNoteOff: handleNoteOff,
@@ -422,6 +425,11 @@ export default function App() {
     setDeepseekOpen(true);
   }, [playback]);
 
+  const openKimiComposer = useCallback(() => {
+    playback.pause();
+    setKimiOpen(true);
+  }, [playback]);
+
   const handleAiCreate = useCallback(
     (composition: AiComposition) => {
       const entry: SongEntry = { score: composition.score, kind: 'ai' };
@@ -451,6 +459,25 @@ export default function App() {
       setTab('studio');
       showToast(
         `DeepSeek sheet “${composition.meta.title}” added — press Listen to hear it.`,
+        'success',
+      );
+    },
+    [showToast],
+  );
+
+  const handleKimiCreate = useCallback(
+    (composition: AiComposition) => {
+      const entry: SongEntry = {
+        score: { ...composition.score, id: `kimi-${Date.now().toString(36)}` },
+        kind: 'kimi',
+      };
+      setSongs((prev) => [...prev, entry]);
+      setCurrentId(entry.score.id);
+      setKimiOpen(false);
+      setViewMode('sheet');
+      setTab('studio');
+      showToast(
+        `Kimi sheet “${composition.meta.title}” added — press Listen to hear it.`,
         'success',
       );
     },
@@ -656,6 +683,7 @@ export default function App() {
                 onRename={handleRenameSong}
                 onAiCompose={openAiComposer}
                 onDeepSeek={openDeepSeekComposer}
+                onKimi={openKimiComposer}
                 onOnlineSearch={openOnlineSearch}
               />
             </aside>
@@ -691,6 +719,14 @@ export default function App() {
                     title="Arrange a song or compose in a composer's style with DeepSeek"
                   >
                     ◇ DeepSeek
+                  </button>
+                  <button
+                    type="button"
+                    className="kimi-cta"
+                    onClick={openKimiComposer}
+                    title="Arrange a song or compose in a composer's style with Kimi"
+                  >
+                    ◇ Kimi
                   </button>
                   <button
                     type="button"
@@ -886,9 +922,18 @@ export default function App() {
       )}
 
       {deepseekOpen && (
-        <DeepSeekComposer
+        <CloudComposer
+          provider="deepseek"
           onClose={() => setDeepseekOpen(false)}
           onCreate={handleDeepSeekCreate}
+        />
+      )}
+
+      {kimiOpen && (
+        <CloudComposer
+          provider="kimi"
+          onClose={() => setKimiOpen(false)}
+          onCreate={handleKimiCreate}
         />
       )}
 

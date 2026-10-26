@@ -42,7 +42,7 @@ export interface AiCompositionMeta {
   difficulty: AiDifficulty;
   seed: number;
   /** Which generator produced the piece. */
-  provider?: 'local' | 'deepseek';
+  provider?: 'local' | 'deepseek' | 'kimi';
   /** Model name for cloud generation. */
   model?: string;
 }

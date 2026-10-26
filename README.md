@@ -1,9 +1,9 @@
 # Piano Studio
 
 A browser piano studio: play an 88-key piano with synthesized sound, read along with real
-sheet music, **generate new sheets with a local composer or your DeepSeek API key**, **search and
-import sheets online**, and practice with two games. It also ships as a native **Android app**
-(Capacitor) — see [Android app](#android-app) below.
+sheet music, **generate new sheets with a local composer, DeepSeek or Kimi**, **search and import
+sheets online**, and practice with two games. It also ships as a native **Android app** (Capacitor)
+— see [Android app](#android-app) below.
 
 ![Piano Studio playing Twinkle Twinkle](docs/studio-playing.png)
 
@@ -63,6 +63,23 @@ import sheets online**, and practice with two games. It also ships as a native *
   the original song’s copyright.
 
 ![DeepSeek piano arranger](docs/deepseek.png)
+
+**Kimi AI (optional, separate dialog)**
+- A second dedicated cloud dialog with the same two text-only modes:
+  - **Song → piano**: type a song/artist and Kimi arranges it for solo piano.
+  - **Composer style**: type a sheet title and composer; Kimi writes an original piece using the
+    built-in style briefs (Chopin, Bach, Mozart, Beethoven, Debussy, Satie, Liszt, Rachmaninoff,
+    Brahms, Tchaikovsky, Joplin, Einaudi, Hisaishi, Yiruma and more).
+- **Kimi K3.1 Pro** is the default; **K3.1 Pro Highspeed** and **Kimi K3** are selectable. Kimi’s
+  Chat Completions endpoint supports browser CORS, so the key and prompt go directly to
+  `api.moonshot.ai`; usage is billed to your Kimi account.
+- Kimi’s standalone Search API is **not browser-CORS-enabled**, so the Kimi dialog does not offer
+  web lookup. Use the optional melody/chords box for a closer arrangement. Kimi K3.1 always reasons;
+  requests are capped at 16 bars and every returned score is validated locally.
+- Opened sheets get a purple **Kimi** badge. As with DeepSeek, a song title alone is not a guaranteed
+  exact transcription — import a MIDI for exact notes.
+
+![Kimi piano sheet dialog](docs/kimi.png)
 
 **Online sheet search**
 - Search by song name or composer and browse **public-domain MIDI performances and PDF sheet scans
@@ -126,23 +143,23 @@ browser support.
 The app is wrapped with [Capacitor](https://capacitorjs.com) and runs as a native Android app with
 a dark splash screen, status-bar theming, hardware back navigation, screen wake-lock while
 playing, and Android share-sheet exports. It includes the local composer, the separate DeepSeek
-song/composer arranger, online sheet search, PDF/notation export, renaming, and audible sheet
-playback with live sound meter.
+and Kimi song/composer arrangers, online sheet search, PDF/notation export, renaming, and audible
+sheet playback with live sound meter.
 
 Signed release artifacts are included in `release/` (gitignored build output):
 
 | Artifact | Size | Use |
 | --- | --- | --- |
-| `release/PianoStudio-1.0.4-release.apk` | 6.2 MiB | sideload / direct install |
-| `release/PianoStudio-1.0.4-release.aab` | 6.1 MiB | Google Play Console upload |
+| `release/PianoStudio-1.1.0-release.apk` | 6.2 MiB | sideload / direct install |
+| `release/PianoStudio-1.1.0-release.aab` | 6.1 MiB | Google Play Console upload |
 | `release/SHA256SUMS.txt` | — | integrity checksums |
 
 ```text
 Package      com.pianostudio.app
-Version      1.0.4 (versionCode 5)
+Version      1.1.0 (versionCode 6)
 Min SDK      24 (Android 7.0+), target SDK 36
-APK SHA-256  671657ff5e450f638179e96a3f023b4f9b6daad2467452b47b367967a6ffdab0
-AAB SHA-256  4dc22f5dda3cb5c309b5d6565c2c5782533816a79c16a2514f1e1ac2705bb35c
+APK SHA-256  9575c5ff204d73debb82b5bc6281798223538493795ca044bc5ff159f4d0e13a
+AAB SHA-256  dca713df8be91324f78fb3e85f7221b4c639813267d1e6cfc9fb40fefc3cb728
 Cert SHA-256 8D:39:AE:54:D9:F8:40:71:B8:3F:0A:6E:B7:9C:56:1C:10:19:F1:A0:8A:9D:FB:93:BF:83:61:AC:7B:12:7A:EA
 ```
 
@@ -150,7 +167,7 @@ Install the signed release over USB debugging, or copy the APK to the phone and 
 “install unknown apps” for your file manager):
 
 ```bash
-adb install -r release/PianoStudio-1.0.4-release.apk
+adb install -r release/PianoStudio-1.1.0-release.apk
 ```
 
 If an older debug build is installed, uninstall it first — it uses a different signing key:
@@ -177,7 +194,7 @@ npm run android:release   # web build → cap sync → assembleRelease + bundleR
 
 # verify the signature and checksum
 apksigner verify --print-certs android/app/build/outputs/apk/release/app-release.apk
-sha256sum release/PianoStudio-1.0.4-release.apk
+sha256sum release/PianoStudio-1.1.0-release.apk
 ```
 
 On macOS/Linux, use `./gradlew assembleRelease bundleRelease` instead of the Windows
@@ -197,7 +214,8 @@ npm run android:open      # open the project in Android Studio
   Files, Drive, send by email, etc. Import uses the system file picker.
 - **Audio** starts on the first tap (WebView autoplay rules) and pauses when the app is backgrounded.
   Sheet playback is audible and the output meter reacts, same as the web app.
-- **AI composer** (local) and the separate **DeepSeek** dialog are available in the Android build too.
+- **AI composer** (local) and the separate **DeepSeek** and **Kimi** dialogs are available in the
+  Android build too.
 - **Online sheet search** (Wikimedia Commons) is bundled in the Android WebView and uses the same
   browser fetch path as the web app for downloads/imports.
 - **Rotation**: portrait is a sheet + keyboard layout; landscape is a compact sheet + full-width
@@ -217,6 +235,7 @@ npm run android:open      # open the project in Android Studio
 | Seek | Click a measure in the sheet, click the piano roll, or use the seek slider |
 | AI compose | `✦ AI Compose` in the toolbar or library panel (offline local composer) |
 | DeepSeek | `◇ DeepSeek` in the toolbar or library panel (song arrangement / composer style) |
+| Kimi | `◇ Kimi` in the toolbar or library panel (song arrangement / composer style) |
 | Online search | `⌕ Online` in the toolbar or library panel |
 | Export PDF | `PDF` in the toolbar export group (A4 pages) |
 | Rename sheet | Pencil button on any imported/recorded/AI/online song |
@@ -251,6 +270,11 @@ use the same mapping.
   Reference lookup improves matching but cannot guarantee an exact transcription of a copyrighted
   song; for exact notes, import a MIDI. Song arrangements are for personal practice; respect the
   original song’s copyright.
+- The **Kimi** dialog uses Kimi K3.1 Pro/Highspeed/K3 via `api.moonshot.ai` (Chat Completions CORS
+  verified). Kimi’s standalone Search API is not browser-CORS-enabled, so the Kimi dialog offers no
+  web lookup; use the optional pasted melody/chords. Kimi K3.1 always reasons, usage is billed to
+  your Kimi account, requests are capped at 16 bars, and returned scores are validated locally.
+  Kimi sheets get a **Kimi** badge.
 - Online search uses the **Wikimedia Commons** API (anonymous CORS, no key). MIDI results are
   downloadable and importable; PDF results open in a new tab. Files keep their Commons licences and
   imports are stored only in this browser. MuseScore/IMSLP links are external searches because those
@@ -261,12 +285,12 @@ use the same mapping.
 ```
 src/
   App.tsx                 app shell, library, transport wiring, import/export UI
-  components/             keyboard, piano roll, transport, AI/DeepSeek composers, online search
+  components/             keyboard, piano roll, transport, AI/DeepSeek/Kimi composers, online search
   export/                 PDF export (jsPDF + svg2pdf, paginated A4)
   hooks/                  piano engine lifecycle, playback scheduler, QWERTY/MIDI input, recorder
   audio/                  Web Audio piano engine + synthesis + offline self-test
   music/                  score model, timing/tempo math, pitch helpers, demo songs, recording
-  music/ai/               local composer, prompt parser, DeepSeek free-form client/settings
+  music/ai/               local composer, prompt parser, DeepSeek/Kimi clients, shared cloud UI
   music/online/           Wikimedia Commons sheet search + MIDI import
   music/formats/          MIDI + MusicXML parsers/writers, .mxl import, quantization, JSON
   sheet/                  VexFlow grand-staff renderer, layout, highlighting, SVG/PDF pages
@@ -280,11 +304,11 @@ Playback is a look-ahead scheduler: notes are scheduled into the AudioContext ~0
 
 ## Verification
 
-- **206 unit tests across 20 files** cover timing/tempo math, pitch/key signatures, score
+- **211 unit tests across 21 files** cover timing/tempo math, pitch/key signatures, score
   normalisation, recording quantization, MIDI/MusicXML round-trips, `.mxl` import, VexFlow layout
-  helpers, audio voice/engine behaviour, AI composition/prompt parsing, DeepSeek response
-  validation, DeepSeek Search references/style guides, online Commons search/import and game
-  scoring/quiz logic.
+  helpers, audio voice/engine behaviour, AI composition/prompt parsing, DeepSeek/Kimi response
+  validation and request shapes, DeepSeek Search references/style guides, online Commons
+  search/import and game scoring/quiz logic.
 - Live audio routing is covered by a regression test (voice output → master bus) and verified in
   headless Chrome with the master analyser: during sheet playback the analyser RMS rises to
   ~0.04–0.29, and the `Sound on` level meter animates. Sheet playback is therefore audible, not
@@ -299,6 +323,12 @@ Playback is a look-ahead scheduler: notes are scheduled into the AudioContext ~0
   without an unnecessary search. The real Chat and Search endpoints were also called from the
   browser with an invalid key: both are CORS-readable, return 401, and the UI shows the “API key
   rejected” message. No real key is stored in the repo.
+- **Kimi mode** was verified in headless Chrome with mocked Kimi Chat completions: the dialog used
+  `api.moonshot.ai/v1/chat/completions`, `kimi-k3.1-pro`, JSON mode, `max_completion_tokens` and no
+  temperature/thinking fields, passed the pasted melody into the prompt, and produced a Kimi-badged
+  score. Kimi’s Chat endpoint is browser-CORS-readable (401 verified); its standalone Search
+  preflight is blocked, so the Kimi UI intentionally uses the manual melody/chords reference box
+  instead.
 - **PDF export** was exercised in headless Chrome with a deliberately dense, chromatic 336-note score:
   the adaptive layout switched to one measure per system and produced 5 readable A4 pages with no
   notes cut at system/page boundaries. A normal 189-note sheet exported as a 2-page PDF. Rendering
@@ -321,9 +351,10 @@ Playback is a look-ahead scheduler: notes are scheduled into the AudioContext ~0
   game → games page → Studio → exit, and both portrait and landscape layouts were checked.
 - Signed release builds were verified with `apksigner` (APK Signature Scheme v2, RSA-2048); the
   1.0.0 build installed cleanly on a fresh Android 14 emulator. **1.0.3** added PDF export, sheet
-  renaming and the separate DeepSeek dialog; **1.0.4** adds web reference lookup, DeepSeek Search
-  integration, composer style guides, one-time V4 Pro migration and optional pasted melody/chords.
-  It is built from this tested web bundle with the same signing key.
+  renaming and the separate DeepSeek dialog; **1.1.0** added web reference lookup, DeepSeek Search,
+  composer style guides and pasted references; **1.1.0** adds the Kimi provider (K3.1 Pro default),
+  shared cloud dialog, Kimi manual references and a Kimi library badge. It is built from this tested
+  web bundle with the same signing key.
 
 ## Credits
 

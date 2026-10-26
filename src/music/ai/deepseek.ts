@@ -30,6 +30,8 @@ export const DEEPSEEK_MODELS: ReadonlyArray<{ value: string; label: string }> = 
 
 export const DEEPSEEK_DEFAULT_MODEL = 'deepseek-v4-pro';
 
+export type CloudProvider = 'deepseek' | 'kimi';
+
 export interface DeepSeekReference {
   title: string;
   url: string;
@@ -345,26 +347,33 @@ function parseNotes(value: unknown): NoteEvent[] {
   return notes;
 }
 
-function deepSeekErrorMessage(status: number, payload: DeepSeekChatResponse | null): string {
+function deepSeekErrorMessage(
+  status: number,
+  payload: DeepSeekChatResponse | null,
+  label = 'DeepSeek',
+): string {
   const apiMessage = payload?.error?.message?.trim();
   if (status === 401) {
-    return 'DeepSeek rejected the API key (401). Check the key on platform.deepseek.com.';
+    return `${label} rejected the API key (401). Check the key on the provider’s platform.`;
   }
   if (status === 402) {
-    return 'The DeepSeek account has insufficient balance (402). Top up or use the local composer.';
+    return `The ${label} account has insufficient balance (402). Top up or use the local composer.`;
+  }
+  if (status === 403) {
+    return `${label} refused the request (403). Check that the account is active and has API access.`;
   }
   if (status === 429) {
-    return 'DeepSeek rate limit reached (429). Wait a moment and retry.';
+    return `${label} rate limit reached (429). Wait a moment and retry.`;
   }
   if (status === 400 && apiMessage) {
-    return `DeepSeek rejected the request: ${apiMessage}`;
+    return `${label} rejected the request: ${apiMessage}`;
   }
   if (status >= 500) {
-    return `DeepSeek is temporarily unavailable (${status}). Try again or use the local composer.`;
+    return `${label} is temporarily unavailable (${status}). Try again or use the local composer.`;
   }
   return apiMessage
-    ? `DeepSeek error ${status}: ${apiMessage}`
-    : `DeepSeek request failed (${status}).`;
+    ? `${label} error ${status}: ${apiMessage}`
+    : `${label} request failed (${status}).`;
 }
 
 function endpointFor(baseUrl: string | undefined): string {
@@ -481,22 +490,53 @@ export async function composeWithDeepSeek(
   config: DeepSeekConfig,
   options: DeepSeekComposeOptions = {},
   externalSignal?: AbortSignal,
+  provider: CloudProvider = 'deepseek',
 ): Promise<AiComposition> {
+  const providerLabel = provider === 'kimi' ? 'Kimi' : 'DeepSeek';
   const trimmedPrompt = prompt.trim();
   if (!trimmedPrompt) {
     throw new DeepSeekError('Describe the song or composer style first.');
   }
   const apiKey = config.apiKey.trim();
   if (!apiKey) {
-    throw new DeepSeekError('Enter your DeepSeek API key first.');
+    throw new DeepSeekError(`Enter your ${providerLabel} API key first.`);
   }
-  const model = config.model?.trim() || DEEPSEEK_DEFAULT_MODEL;
+  const model =
+    config.model?.trim() ||
+    (provider === 'kimi' ? 'kimi-k3.1-pro' : DEEPSEEK_DEFAULT_MODEL);
   const endpoint = endpointFor(config.baseUrl);
 
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 120_000);
+  const timeout = window.setTimeout(() => controller.abort(), 180_000);
   const onExternalAbort = () => controller.abort();
   externalSignal?.addEventListener('abort', onExternalAbort);
+
+  const messages = [
+    { role: 'system', content: buildSystemPrompt() },
+    {
+      role: 'user',
+      content: buildUserPrompt(trimmedPrompt, options.bars ?? 16, options),
+    },
+  ];
+  const requestBody =
+    provider === 'kimi'
+      ? {
+          model,
+          messages,
+          response_format: { type: 'json_object' },
+          max_completion_tokens: 32768,
+          ...(model.startsWith('kimi-k3.1') ? { reasoning_effort: 'low' } : {}),
+          stream: false,
+        }
+      : {
+          model,
+          messages,
+          temperature: 0.75,
+          max_tokens: 8192,
+          response_format: { type: 'json_object' },
+          thinking: { type: 'disabled' },
+          stream: false,
+        };
 
   let response: Response;
   try {
@@ -506,30 +546,20 @@ export async function composeWithDeepSeek(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: buildSystemPrompt() },
-          {
-            role: 'user',
-            content: buildUserPrompt(trimmedPrompt, options.bars ?? 16, options),
-          },
-        ],
-        temperature: 0.75,
-        max_tokens: 8192,
-        response_format: { type: 'json_object' },
-        thinking: { type: 'disabled' },
-        stream: false,
-      }),
+      body: JSON.stringify(requestBody),
       signal: controller.signal,
     });
   } catch {
-    if (externalSignal?.aborted) throw new DeepSeekError('DeepSeek generation was cancelled.');
+    if (externalSignal?.aborted) {
+      throw new DeepSeekError(`${providerLabel} generation was cancelled.`);
+    }
     if (controller.signal.aborted) {
-      throw new DeepSeekError('DeepSeek took too long to respond. Try again with a simpler request.');
+      throw new DeepSeekError(
+        `${providerLabel} took too long to respond. Try again with a simpler request.`,
+      );
     }
     throw new DeepSeekError(
-      `Could not reach DeepSeek at ${endpoint}. Check your connection and base URL.`,
+      `Could not reach ${providerLabel} at ${endpoint}. Check your connection and base URL.`,
     );
   } finally {
     window.clearTimeout(timeout);
@@ -545,18 +575,23 @@ export async function composeWithDeepSeek(
   }
 
   if (!response.ok) {
-    throw new DeepSeekError(deepSeekErrorMessage(response.status, payload), response.status);
+    throw new DeepSeekError(
+      deepSeekErrorMessage(response.status, payload, providerLabel),
+      response.status,
+    );
   }
 
   const choice = payload?.choices?.[0];
   if (choice?.finish_reason === 'length') {
     throw new DeepSeekError(
-      'DeepSeek’s score was cut off (token limit). Try a shorter request or use Flash.',
+      `${providerLabel}’s score was cut off (token limit). Try a shorter request.`,
     );
   }
   const content = choice?.message?.content?.trim();
   if (!content) {
-    throw new DeepSeekError('DeepSeek returned an empty score. This can happen occasionally — retry.');
+    throw new DeepSeekError(
+      `${providerLabel} returned an empty score. This can happen occasionally — retry.`,
+    );
   }
 
   const parsed = extractJson(content);
@@ -565,7 +600,7 @@ export async function composeWithDeepSeek(
   const right = notes.filter((note) => note.hand === 'right').length;
   if (notes.length < 8 || left < 2 || right < 2) {
     throw new DeepSeekError(
-      'DeepSeek’s JSON did not contain a usable two-hand piano score. Try again with a clearer request.',
+      `${providerLabel}’s JSON did not contain a usable two-hand piano score. Try again with a clearer request.`,
     );
   }
 
@@ -592,11 +627,15 @@ export async function composeWithDeepSeek(
     .filter((note) => note.duration >= 0.125);
 
   const rawTitle = typeof parsed.title === 'string' ? parsed.title.trim() : '';
-  const title = (rawTitle || options.fallbackTitle || `DeepSeek Piece in ${key.name}`).slice(0, 80);
+  const title = (
+    rawTitle ||
+    options.fallbackTitle ||
+    `${providerLabel} Piece in ${key.name}`
+  ).slice(0, 80);
   const composer =
     typeof parsed.composer === 'string' && parsed.composer.trim()
       ? parsed.composer.trim().slice(0, 80)
-      : 'DeepSeek AI';
+      : `${providerLabel} AI`;
   const style = options.style ?? 'classical';
   const mood = options.mood ?? 'dreamy';
   const difficulty = options.difficulty ?? 'medium';
@@ -604,10 +643,10 @@ export async function composeWithDeepSeek(
   const moodLabel = AI_MOODS.find((entry) => entry.value === mood)?.label ?? mood;
   const promptSummary = trimmedPrompt.replace(/\s+/g, ' ').slice(0, 140);
   const description = options.descriptionHint?.trim()
-    ? `${options.descriptionHint.trim()}. ${finalBars} bars in ${key.name} at ${bpm} BPM, generated with DeepSeek (${model})${
+    ? `${options.descriptionHint.trim()}. ${finalBars} bars in ${key.name} at ${bpm} BPM, generated with ${providerLabel} (${model})${
         options.referenceText ? ' with web reference' : ''
       }.`
-    : `${moodLabel} ${styleLabel.toLowerCase()} in ${key.name}, ${finalBars} bars at ${bpm} BPM. Generated with DeepSeek (${model}) from “${promptSummary}”.`;
+    : `${moodLabel} ${styleLabel.toLowerCase()} in ${key.name}, ${finalBars} bars at ${bpm} BPM. Generated with ${providerLabel} (${model}) from “${promptSummary}”.`;
 
   const score: Score = createScore({
     title,
@@ -635,7 +674,7 @@ export async function composeWithDeepSeek(
       timeSignature: meter.signature,
       difficulty,
       seed: 0,
-      provider: 'deepseek',
+      provider,
       model,
     },
   };

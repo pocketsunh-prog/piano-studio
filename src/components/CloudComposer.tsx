@@ -1,23 +1,25 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  DEEPSEEK_DEFAULT_BASE_URL,
-  DEEPSEEK_DEFAULT_MODEL,
-  DEEPSEEK_MODELS,
   composerStyleGuide,
-  composeWithDeepSeek,
-  searchDeepSeekReferences,
   type DeepSeekConfig,
   type DeepSeekReference,
 } from '../music/ai/deepseek';
-import { loadDeepSeekSettings, saveDeepSeekSettings } from '../music/ai/deepseekSettings';
+import { CLOUD_PROVIDERS } from '../music/ai/cloudProviders';
+import {
+  loadCloudSettings,
+  saveCloudSettings,
+  type CloudProviderId,
+} from '../music/ai/deepseekSettings';
 import type { AiComposition } from '../music/ai/composer';
 
-export interface DeepSeekComposerProps {
+export interface CloudComposerProps {
   onClose: () => void;
   onCreate: (composition: AiComposition) => void;
+  /** Which cloud provider this dialog talks to. */
+  provider?: CloudProviderId;
 }
 
-type DeepSeekMode = 'song' | 'composer';
+type CloudMode = 'song' | 'composer';
 
 const SONG_EXAMPLES = ['Shape of You — Ed Sheeran', 'Clair de Lune', 'Yesterday — The Beatles'];
 const COMPOSER_EXAMPLES: Array<{ title: string; composer: string }> = [
@@ -26,24 +28,33 @@ const COMPOSER_EXAMPLES: Array<{ title: string; composer: string }> = [
   { title: 'Waltz for a Rainy Day', composer: 'Debussy' },
 ];
 
-export function DeepSeekComposer({ onClose, onCreate }: DeepSeekComposerProps) {
-  const [stored] = useState(loadDeepSeekSettings);
-  const [mode, setMode] = useState<DeepSeekMode>('song');
+export function CloudComposer({
+  onClose,
+  onCreate,
+  provider = 'deepseek',
+}: CloudComposerProps) {
+  const providerConfig = CLOUD_PROVIDERS[provider];
+  const providerLabel = providerConfig.label;
+  const [stored] = useState(() => loadCloudSettings(provider));
+  const [mode, setMode] = useState<CloudMode>('song');
   const [songQuery, setSongQuery] = useState('');
   const [sheetTitle, setSheetTitle] = useState('');
   const [composerName, setComposerName] = useState('');
   const [apiKey, setApiKey] = useState(stored.apiKey ?? '');
-  const [model, setModel] = useState(() =>
-    stored.modelMigrated ? (stored.model ?? DEEPSEEK_DEFAULT_MODEL) : DEEPSEEK_DEFAULT_MODEL,
-  );
-  const [baseUrl, setBaseUrl] = useState(stored.baseUrl ?? DEEPSEEK_DEFAULT_BASE_URL);
+  const [model, setModel] = useState(() => {
+    if (provider === 'deepseek' && !stored.modelMigrated) {
+      return providerConfig.defaultModel;
+    }
+    return stored.model ?? providerConfig.defaultModel;
+  });
+  const [baseUrl, setBaseUrl] = useState(stored.baseUrl ?? providerConfig.defaultBaseUrl);
   const [rememberKey, setRememberKey] = useState(Boolean(stored.remember));
   const [showKey, setShowKey] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(!stored.apiKey);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AiComposition | null>(null);
-  const [useReference, setUseReference] = useState(true);
+  const [useReference, setUseReference] = useState(providerConfig.supportsSearch);
   const [manualReference, setManualReference] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [referenceNote, setReferenceNote] = useState<string | null>(null);
@@ -51,14 +62,14 @@ export function DeepSeekComposer({ onClose, onCreate }: DeepSeekComposerProps) {
   const songRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    saveDeepSeekSettings({
+    saveCloudSettings(provider, {
       apiKey,
       model,
       baseUrl,
       remember: rememberKey,
       modelMigrated: true,
     });
-  }, [apiKey, model, baseUrl, rememberKey]);
+  }, [provider, apiKey, model, baseUrl, rememberKey]);
 
   useEffect(() => {
     songRef.current?.focus();
@@ -87,7 +98,7 @@ export function DeepSeekComposer({ onClose, onCreate }: DeepSeekComposerProps) {
       return;
     }
     if (!apiKey.trim()) {
-      setError('Enter your DeepSeek API key first.');
+      setError(`Enter your ${providerLabel} API key first.`);
       setSettingsOpen(true);
       return;
     }
@@ -126,53 +137,53 @@ export function DeepSeekComposer({ onClose, onCreate }: DeepSeekComposerProps) {
     const manual = mode === 'song' ? manualReference.trim().slice(0, 2000) : '';
     let referenceText = manual ? `USER-PROVIDED MELODY/CHORDS:\n${manual}` : '';
     try {
-      if (useReference) {
+      if (useReference && providerConfig.supportsSearch) {
         try {
-        setStatus(
-          mode === 'song'
-            ? 'Looking up song references…'
-            : styleGuide
-              ? 'Preparing composer style…'
-              : 'Looking up composer style…',
-        );
-        let references: DeepSeekReference[] = [];
-        if (mode === 'song') {
-          references = await searchDeepSeekReferences(
-            `${song} piano chords key tempo melody notes`,
-            config,
-            controller.signal,
+          setStatus(
+            mode === 'song'
+              ? 'Looking up song references…'
+              : styleGuide
+                ? 'Preparing composer style…'
+                : 'Looking up composer style…',
           );
-        } else if (!styleGuide) {
-          references = await searchDeepSeekReferences(
-            `${composer} piano composition style harmony texture form`,
-            config,
-            controller.signal,
-          );
-        }
-        if (controller.signal.aborted) return;
-        if (references.length) {
-          const webReferences = references
-            .map((reference, index) => `${index + 1}. ${reference.title}: ${reference.summary}`)
-            .join('\n');
-          referenceText = [referenceText, `WEB LOOKUP:\n${webReferences}`]
-            .filter(Boolean)
-            .join('\n\n');
-          setReferenceNote(
-            `Used ${references.length} web reference${references.length === 1 ? '' : 's'}${
-              manual ? ' + your pasted reference' : ''
-            }.`,
-          );
-        } else if (mode === 'song') {
-          setReferenceNote(
-            manual
-              ? 'Using your pasted melody/chords (no extra web reference found).'
-              : 'No web reference found; composing from model knowledge.',
-          );
-        } else if (!styleGuide) {
-          setReferenceNote('No style reference found; composing from model knowledge.');
-        } else {
-          setReferenceNote(`Using the built-in ${composer} style guide.`);
-        }
+          let references: DeepSeekReference[] = [];
+          if (mode === 'song') {
+            references = await providerConfig.search(
+              `${song} piano chords key tempo melody notes`,
+              config,
+              controller.signal,
+            );
+          } else if (!styleGuide) {
+            references = await providerConfig.search(
+              `${composer} piano composition style harmony texture form`,
+              config,
+              controller.signal,
+            );
+          }
+          if (controller.signal.aborted) return;
+          if (references.length) {
+            const webReferences = references
+              .map((reference, index) => `${index + 1}. ${reference.title}: ${reference.summary}`)
+              .join('\n');
+            referenceText = [referenceText, `WEB LOOKUP:\n${webReferences}`]
+              .filter(Boolean)
+              .join('\n\n');
+            setReferenceNote(
+              `Used ${references.length} web reference${references.length === 1 ? '' : 's'}${
+                manual ? ' + your pasted reference' : ''
+              }.`,
+            );
+          } else if (mode === 'song') {
+            setReferenceNote(
+              manual
+                ? 'Using your pasted melody/chords (no extra web reference found).'
+                : 'No web reference found; composing from model knowledge.',
+            );
+          } else if (!styleGuide) {
+            setReferenceNote('No style reference found; composing from model knowledge.');
+          } else {
+            setReferenceNote(`Using the built-in ${composer} style guide.`);
+          }
         } catch {
           if (controller.signal.aborted) return;
           setReferenceNote('Reference lookup unavailable; composing from model knowledge.');
@@ -183,8 +194,8 @@ export function DeepSeekComposer({ onClose, onCreate }: DeepSeekComposerProps) {
         setReferenceNote(`Using the built-in ${composer} style guide.`);
       }
 
-      setStatus('DeepSeek is composing…');
-      const composition = await composeWithDeepSeek(
+      setStatus(`${providerLabel} is composing…`);
+      const composition = await providerConfig.compose(
         prompt,
         config,
         { ...options, referenceText, styleGuide },
@@ -196,7 +207,7 @@ export function DeepSeekComposer({ onClose, onCreate }: DeepSeekComposerProps) {
         setError(
           generationError instanceof Error
             ? generationError.message
-            : 'DeepSeek generation failed.',
+            : `${providerLabel} generation failed.`,
         );
       }
     } finally {
@@ -216,21 +227,23 @@ export function DeepSeekComposer({ onClose, onCreate }: DeepSeekComposerProps) {
       }}
     >
       <div
-        className="ai-dialog deepseek-dialog"
+        className={`ai-dialog deepseek-dialog cloud-dialog cloud-${provider}`}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="deepseek-title"
+        aria-labelledby={`${provider}-title`}
       >
         <header className="ai-header">
           <div>
-            <p className="ai-eyebrow">DeepSeek AI · cloud arranger</p>
-            <h2 id="deepseek-title">DeepSeek piano sheet</h2>
-            <p className="ai-subtitle">
-              Just type a song to arrange, or a sheet title and composer to write in their style.
-              No style, key or tempo controls — DeepSeek decides.
-            </p>
+            <p className="ai-eyebrow">{providerConfig.eyebrow}</p>
+            <h2 id={`${provider}-title`}>{providerConfig.title}</h2>
+            <p className="ai-subtitle">{providerConfig.subtitle}</p>
           </div>
-          <button type="button" className="ai-close" onClick={onClose} aria-label="Close DeepSeek composer">
+          <button
+            type="button"
+            className="ai-close"
+            onClick={onClose}
+            aria-label={`Close ${providerLabel} composer`}
+          >
             ×
           </button>
         </header>
@@ -243,16 +256,16 @@ export function DeepSeekComposer({ onClose, onCreate }: DeepSeekComposerProps) {
               onToggle={(event) => setSettingsOpen(event.currentTarget.open)}
             >
               <summary>
-                DeepSeek API settings
+                {providerLabel} API settings
                 <span className={apiKey ? 'settings-ok' : 'settings-warn'}>
                   {apiKey ? 'key set' : 'key required'}
                 </span>
               </summary>
-              <label className="ai-field" htmlFor="deepseek-key">
+              <label className="ai-field" htmlFor={`${provider}-key`}>
                 <span>API key</span>
                 <div className="ai-key-row">
                   <input
-                    id="deepseek-key"
+                    id={`${provider}-key`}
                     type={showKey ? 'text' : 'password'}
                     value={apiKey}
                     onChange={(event) => {
@@ -272,16 +285,20 @@ export function DeepSeekComposer({ onClose, onCreate }: DeepSeekComposerProps) {
                 <label className="ai-field">
                   <span>Model</span>
                   <select value={model} onChange={(event) => setModel(event.target.value)}>
-                    {DEEPSEEK_MODELS.map((entry) => (
+                    {providerConfig.models.map((entry) => (
                       <option key={entry.value} value={entry.value}>
                         {entry.label}
                       </option>
                     ))}
                   </select>
-                  <small className={`deepseek-model-note ${model === 'deepseek-flash' ? 'warn' : ''}`}>
-                    {model === 'deepseek-flash'
+                  <small
+                    className={`deepseek-model-note ${
+                      provider === 'deepseek' && model === 'deepseek-flash' ? 'warn' : ''
+                    }`}
+                  >
+                    {provider === 'deepseek' && model === 'deepseek-flash'
                       ? 'Flash is faster but may produce more generic arrangements; V4 Pro is recommended.'
-                      : 'V4 Pro is recommended for closer song and composer results.'}
+                      : providerConfig.modelHint}
                   </small>
                 </label>
                 <label className="ai-check">
@@ -301,23 +318,23 @@ export function DeepSeekComposer({ onClose, onCreate }: DeepSeekComposerProps) {
                     type="url"
                     value={baseUrl}
                     onChange={(event) => setBaseUrl(event.target.value)}
-                    placeholder={DEEPSEEK_DEFAULT_BASE_URL}
+                    placeholder={providerConfig.defaultBaseUrl}
                     spellCheck={false}
                   />
                 </label>
               </details>
               <div className="ai-deepseek-links">
-                <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noreferrer">
-                  Get a DeepSeek API key ↗
+                <a href={providerConfig.keyLink} target="_blank" rel="noreferrer">
+                  Get a {providerLabel} API key ↗
                 </a>
                 <span>
-                  Key &amp; prompts go directly to api.deepseek.com. DeepSeek usage is billed to your
-                  account. The key is only stored on this device if you tick “Remember”.
+                  Key &amp; prompts go directly to {providerConfig.keyHost}. {providerLabel} usage is
+                  billed to your account. The key is only stored on this device if you tick “Remember”.
                 </span>
               </div>
             </details>
 
-            <div className="deepseek-mode ai-seg" role="group" aria-label="DeepSeek mode">
+            <div className="deepseek-mode ai-seg" role="group" aria-label={`${providerLabel} mode`}>
               <button
                 type="button"
                 className={mode === 'song' ? 'on' : ''}
@@ -340,25 +357,32 @@ export function DeepSeekComposer({ onClose, onCreate }: DeepSeekComposerProps) {
               </button>
             </div>
 
-            <label className="deepseek-check">
-              <input
-                type="checkbox"
-                checked={useReference}
-                onChange={(event) => setUseReference(event.target.checked)}
-              />
-              <span>
-                Look up song/style details online
-                <em>DeepSeek Search · one extra request</em>
-              </span>
-            </label>
+            {providerConfig.supportsSearch ? (
+              <label className="deepseek-check">
+                <input
+                  type="checkbox"
+                  checked={useReference}
+                  onChange={(event) => setUseReference(event.target.checked)}
+                />
+                <span>
+                  Look up song/style details online
+                  <em>{providerConfig.searchName} · one extra request</em>
+                </span>
+              </label>
+            ) : (
+              <p className="deepseek-reference-unavailable">
+                Kimi Search isn’t available from the browser. Use the optional melody/chords box
+                below for a closer arrangement.
+              </p>
+            )}
 
             {mode === 'song' ? (
               <>
-                <label className="ai-prompt-label" htmlFor="deepseek-song">
+                <label className="ai-prompt-label" htmlFor={`${provider}-song`}>
                   Pop song name
                 </label>
                 <input
-                  id="deepseek-song"
+                  id={`${provider}-song`}
                   ref={songRef}
                   className="deepseek-input"
                   type="text"
@@ -382,9 +406,9 @@ export function DeepSeekComposer({ onClose, onCreate }: DeepSeekComposerProps) {
                   ))}
                 </div>
                 <p className="deepseek-hint">
-                  DeepSeek looks up key/chords/hook references online, then writes a playable
-                  two-hand arrangement. If the song still sounds too generic, paste the melody or
-                  chords below.
+                  {providerConfig.supportsSearch
+                    ? `${providerLabel} looks up key/chords/hook references online, then writes a playable two-hand arrangement. If the song still sounds too generic, paste the melody or chords below.`
+                    : `${providerLabel} arranges from model knowledge. For a closer match, paste the main melody notes or chord progression below.`}
                 </p>
                 <details className="deepseek-manual-ref">
                   <summary>Optional: paste melody notes or chords</summary>
@@ -396,29 +420,29 @@ export function DeepSeekComposer({ onClose, onCreate }: DeepSeekComposerProps) {
                     placeholder="e.g. G#4 G#4 F#4 E4 … or C#m | F#m | A | B"
                   />
                   <span>
-                    Melody as note names, or chord symbols per bar. This is passed to DeepSeek as
-                    the reference to follow.
+                    Melody as note names, or chord symbols per bar. This is passed to {providerLabel}{' '}
+                    as the reference to follow.
                   </span>
                 </details>
               </>
             ) : (
               <>
-                <label className="ai-prompt-label" htmlFor="deepseek-sheet-title">
+                <label className="ai-prompt-label" htmlFor={`${provider}-sheet-title`}>
                   Piano sheet name
                 </label>
                 <input
-                  id="deepseek-sheet-title"
+                  id={`${provider}-sheet-title`}
                   className="deepseek-input"
                   type="text"
                   value={sheetTitle}
                   placeholder="e.g. Nocturne in E-flat major"
                   onChange={(event) => setSheetTitle(event.target.value)}
                 />
-                <label className="ai-prompt-label" htmlFor="deepseek-composer">
+                <label className="ai-prompt-label" htmlFor={`${provider}-composer`}>
                   Composer name
                 </label>
                 <input
-                  id="deepseek-composer"
+                  id={`${provider}-composer`}
                   className="deepseek-input"
                   type="text"
                   value={composerName}
@@ -466,13 +490,18 @@ export function DeepSeekComposer({ onClose, onCreate }: DeepSeekComposerProps) {
               onClick={() => void generate()}
               disabled={busy}
             >
-              {busy ? (status ?? 'DeepSeek is composing…') : '✦ Generate with DeepSeek'}
+              {busy
+                ? (status ?? `${providerLabel} is composing…`)
+                : `✦ Generate with ${providerLabel}`}
             </button>
             <p className="deepseek-note">
-              DeepSeek arrangements are AI approximations. Web lookup improves key/chord/style
-              matching, but for exact notes import a MIDI. Song arrangements are for personal
-              practice; respect the original song’s copyright. DeepSeek usage and Search requests
-              are billed to your API account.
+              {providerLabel} arrangements are AI approximations.{' '}
+              {providerConfig.supportsSearch
+                ? 'Web lookup improves key/chord/style matching, but for exact notes import a MIDI.'
+                : 'Paste the melody/chords for a closer match; for exact notes import a MIDI.'}{' '}
+              Song arrangements are for personal practice; respect the original song’s copyright.{' '}
+              {providerLabel} usage{providerConfig.supportsSearch ? ' and Search requests' : ''} are
+              billed to your API account.
             </p>
           </div>
 
@@ -483,7 +512,10 @@ export function DeepSeekComposer({ onClose, onCreate }: DeepSeekComposerProps) {
                 <h3>{result.meta.title}</h3>
                 <p className="ai-description">{result.meta.description}</p>
                 <div className="ai-meta">
-                  <span>DeepSeek{result.meta.model ? ` · ${result.meta.model}` : ''}</span>
+                  <span>
+                    {providerLabel}
+                    {result.meta.model ? ` · ${result.meta.model}` : ''}
+                  </span>
                   <span>{result.meta.keyName}</span>
                   <span>{result.meta.timeSignature}</span>
                   <span>{result.meta.bars} bars</span>
@@ -509,12 +541,14 @@ export function DeepSeekComposer({ onClose, onCreate }: DeepSeekComposerProps) {
                 <p className="ai-eyebrow">Two ways to ask</p>
                 <div className="deepseek-empty-card">
                   <strong>Song → piano</strong>
-                  <span>Type a pop song and artist. DeepSeek arranges it for solo piano.</span>
+                  <span>Type a pop song and artist. {providerLabel} arranges it for solo piano.</span>
                   <em>“Shape of You — Ed Sheeran”</em>
                 </div>
                 <div className="deepseek-empty-card">
                   <strong>Composer style</strong>
-                  <span>Type a new sheet name and a composer. DeepSeek composes in their style.</span>
+                  <span>
+                    Type a new sheet name and a composer. {providerLabel} composes in their style.
+                  </span>
                   <em>“Nocturne in E-flat major · Chopin”</em>
                 </div>
                 <p className="ai-hint">

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Score } from '../music/types';
 import { scoreDurationSeconds } from '../music/timing';
 
-export type SongKind = 'demo' | 'imported' | 'recording' | 'ai' | 'deepseek' | 'online';
+export type SongKind = 'demo' | 'imported' | 'recording' | 'ai' | 'deepseek' | 'kimi' | 'online';
 
 export interface SongEntry {
   score: Score;
@@ -19,6 +19,7 @@ export interface SongLibraryProps {
   onRename: (id: string, title: string) => void;
   onAiCompose: () => void;
   onDeepSeek: () => void;
+  onKimi: () => void;
   onOnlineSearch: () => void;
 }
 
@@ -35,6 +36,7 @@ const KIND_LABEL: Record<SongKind, string> = {
   recording: 'Recording',
   ai: 'AI',
   deepseek: 'DeepSeek',
+  kimi: 'Kimi',
   online: 'Online',
 };
 
@@ -48,6 +50,7 @@ export function SongLibrary({
   onRename,
   onAiCompose,
   onDeepSeek,
+  onKimi,
   onOnlineSearch,
 }: SongLibraryProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -84,6 +87,9 @@ export function SongLibrary({
       </div>
       <button type="button" className="btn deepseek-button" onClick={onDeepSeek}>
         <span aria-hidden="true">◇</span> DeepSeek AI
+      </button>
+      <button type="button" className="btn kimi-button" onClick={onKimi}>
+        <span aria-hidden="true">◇</span> Kimi AI
       </button>
 
       <ul className="song-list">
